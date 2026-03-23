@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-import cv2
 import numpy as np
 
 from app.core.config import settings
@@ -26,20 +25,46 @@ class InactiveDecision:
 class InactiveDetector:
     # 이 메서드는 클래스가 동작하는 데 필요한 초기 상태와 객체를 준비합니다.
     def __init__(self) -> None:
-        self.background_subtractor = self.init_background_subtractor()
+        self.background_subtractor = None
+        self.enabled = False
+        self.disabled_reason = ""
         self.no_motion_seconds = 0.0
         self._previous_timestamp: float | None = None
         self._yolo = None
+        self._initialize()
+
+    # 이 메서드는 비활동 감지기에 필요한 리소스를 초기화합니다.
+    def _initialize(self) -> None:
+        try:
+            self.background_subtractor = self.init_background_subtractor()
+            self.enabled = True
+            self.disabled_reason = ""
+        except Exception as exc:  # pragma: no cover - runtime/environment dependent
+            self.background_subtractor = None
+            self.enabled = False
+            self.disabled_reason = f"inactive detector unavailable: {exc}"
+            return
+
         if settings.enable_yolo_person_gate and YOLO is not None:
             self._yolo = YOLO(settings.yolo_model)
 
     # 이 메서드는 움직임 계산에 사용할 배경 차감기를 초기화합니다.
-    def init_background_subtractor(self) -> cv2.BackgroundSubtractor:
+    def init_background_subtractor(self) -> Any:
+        import cv2
+
         return cv2.createBackgroundSubtractorMOG2(
             history=500,
             varThreshold=25,
             detectShadows=True,
         )
+
+    # 이 메서드는 감지기의 현재 활성화 상태와 사유를 반환합니다.
+    def status(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "backend": "opencv_mog2",
+            "reason": self.disabled_reason,
+        }
 
     # 이 메서드는 프레임 안에 사람이 있는지와 사람 수를 추정합니다.
     def detect_person(self, frame: np.ndarray) -> tuple[bool, int]:
@@ -58,6 +83,11 @@ class InactiveDetector:
 
     # 이 메서드는 현재 프레임의 움직임 비율을 계산합니다.
     def calculate_motion(self, frame: np.ndarray) -> float:
+        if self.background_subtractor is None:
+            return 0.0
+
+        import cv2
+
         fg_mask = self.background_subtractor.apply(frame)
         motion_mask = np.where(fg_mask == 255, 255, 0).astype(np.uint8)
         kernel = np.ones((3, 3), np.uint8)
@@ -89,6 +119,9 @@ class InactiveDetector:
 
     # 이 메서드는 비활동 상태를 종합 평가해 판정 결과를 만듭니다.
     def evaluate(self, frame: np.ndarray, timestamp_sec: float) -> InactiveDecision:
+        if not self.enabled:
+            return InactiveDecision(motion_ratio=0.0, person_present=False, inactive_seconds=0.0, num_persons=0)
+
         person_present, num_persons = self.detect_person(frame)
         motion_ratio = self.calculate_motion(frame)
         inactive_seconds = self.accumulate_no_motion(timestamp_sec, motion_ratio, person_present)
@@ -101,12 +134,15 @@ class InactiveDetector:
 
     # 이 메서드는 감지 결과를 이벤트 메트릭 형태로 정리합니다.
     def build_metrics(self, decision: InactiveDecision) -> EventMetrics:
-        return EventMetrics(
+        metrics = EventMetrics(
             motion_ratio=decision.motion_ratio,
             inactive_seconds=decision.inactive_seconds,
             num_persons=decision.num_persons,
         )
+        if not self.enabled and self.disabled_reason:
+            metrics.notes["inactive_detector"] = self.disabled_reason
+        return metrics
 
     # 이 메서드는 현재 감지 결과를 실제 이벤트로 발생시킬지 결정합니다.
     def should_emit(self, decision: InactiveDecision) -> bool:
-        return decision.person_present and decision.inactive_seconds >= settings.inactive_seconds
+        return self.enabled and decision.person_present and decision.inactive_seconds >= settings.inactive_seconds

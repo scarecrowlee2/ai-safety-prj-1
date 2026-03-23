@@ -87,11 +87,18 @@ class RealtimeSafetyPipeline:
 
         self.last_alert_state = current
 
-    # 이 메서드는 상태 패널 배경을 그리고 상단 정보 표시에 사용할 y 좌표를 반환합니다.
+    # 이 메서드는 화면 내부 상태 패널 배경을 그리고 상단 정보 표시에 사용할 y 좌표를 반환합니다.
     def _draw_status_panel(self, overlay):
-        cv2.rectangle(overlay, (10, 10), (980, 170), self.overlay_colors["panel"], -1)
-        cv2.rectangle(overlay, (10, 10), (980, 170), (90, 90, 90), 2)
-        return 40
+        h, w = overlay.shape[:2]
+
+        left = 10
+        top = 10
+        right = w - 10       # 화면 오른쪽 끝에서 10px 안쪽
+        bottom = 125         # 패널 높이 줄임
+
+        cv2.rectangle(overlay, (left, top), (right, bottom), self.overlay_colors["panel"], -1)
+        cv2.rectangle(overlay, (left, top), (right, bottom), (90, 90, 90), 2)
+        return 38
 
     # 이 메서드는 각 감지기 결과를 더 선명한 색상 박스와 텍스트로 화면에 표시합니다.
     def process(self, frame, timestamp_sec: float):
@@ -106,26 +113,26 @@ class RealtimeSafetyPipeline:
         y = self._draw_status_panel(overlay)
 
         lines = [
-            (
-                f"Fall/Faint: {'ALERT' if fall.should_alert else ('WATCH' if fall.is_candidate else 'NORMAL')} | "
-                f"hold={fall.horizontal_seconds:.1f}s | ratio={fall.bbox_aspect_ratio if fall.bbox_aspect_ratio is not None else 0:.2f}",
-                self.overlay_colors["fall_alert"] if fall.should_alert else self.overlay_colors["fall_watch"] if fall.is_candidate else self.overlay_colors["safe"],
-            ),
-            (
-                f"Inactive: {'ALERT' if inactive.should_alert else ('WATCH' if inactive.person_present else 'NO PERSON')} | "
-                f"no_motion={inactive.inactive_seconds:.1f}s | motion={inactive.motion_ratio:.4f}",
-                self.overlay_colors["inactive_alert"] if inactive.should_alert else self.overlay_colors["inactive_watch"] if inactive.person_present else self.overlay_colors["safe"],
-            ),
-            (
-                f"Violence: {'ALERT' if violence.should_alert else ('WATCH' if violence.num_persons >= 2 else 'NORMAL')} | "
-                f"persons={violence.num_persons} | close_pairs={violence.close_pairs} | motion={violence.motion_ratio:.4f}",
-                self.overlay_colors["violence_alert"] if violence.should_alert else self.overlay_colors["violence_watch"] if violence.num_persons >= 2 else self.overlay_colors["safe"],
-            ),
-        ]
+        (
+            f"Fall: {'ALERT' if fall.should_alert else ('WATCH' if fall.is_candidate else 'NORMAL')} | "
+            f"hold={fall.horizontal_seconds:.1f}s",
+            self.overlay_colors["fall_alert"] if fall.should_alert else self.overlay_colors["fall_watch"] if fall.is_candidate else self.overlay_colors["safe"],
+        ),
+        (
+            f"Inactive: {'ALERT' if inactive.should_alert else ('WATCH' if inactive.person_present else 'NO PERSON')} | "
+            f"no_motion={inactive.inactive_seconds:.1f}s",
+            self.overlay_colors["inactive_alert"] if inactive.should_alert else self.overlay_colors["inactive_watch"] if inactive.person_present else self.overlay_colors["safe"],
+        ),
+        (
+            f"Violence: {'ALERT' if violence.should_alert else ('WATCH' if violence.num_persons >= 2 else 'NORMAL')} | "
+            f"persons={violence.num_persons}",
+            self.overlay_colors["violence_alert"] if violence.should_alert else self.overlay_colors["violence_watch"] if violence.num_persons >= 2 else self.overlay_colors["safe"],
+        ),
+]
 
         for line, color in lines:
-            cv2.putText(overlay, line, (25, y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-            y += 40
+            cv2.putText(overlay, line, (25, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+            y += 32
 
         if fall.bbox is not None:
             x, y1, w, h = fall.bbox

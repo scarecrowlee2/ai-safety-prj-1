@@ -91,26 +91,26 @@ class RealtimeSafetyPipeline:
         y = self._draw_status_panel(overlay)
 
         lines = [
-            (
-                f"Fall/Faint: {'ALERT' if fall.should_alert else ('WATCH' if fall.is_candidate else 'NORMAL')} | "
-                f"hold={fall.horizontal_seconds:.1f}s | ratio={fall.bbox_aspect_ratio if fall.bbox_aspect_ratio is not None else 0:.2f}",
-                self.overlay_colors["fall_alert"] if fall.should_alert else self.overlay_colors["fall_watch"] if fall.is_candidate else self.overlay_colors["safe"],
-            ),
-            (
-                f"Inactive: {'ALERT' if inactive.should_alert else ('WATCH' if inactive.person_present else 'NO PERSON')} | "
-                f"no_motion={inactive.inactive_seconds:.1f}s | motion={inactive.motion_ratio:.4f}",
-                self.overlay_colors["inactive_alert"] if inactive.should_alert else self.overlay_colors["inactive_watch"] if inactive.person_present else self.overlay_colors["safe"],
-            ),
-            (
-                f"Violence: {'ALERT' if violence.should_alert else ('WATCH' if violence.num_persons >= 2 else 'NORMAL')} | "
-                f"persons={violence.num_persons} | close_pairs={violence.close_pairs} | motion={violence.motion_ratio:.4f}",
-                self.overlay_colors["violence_alert"] if violence.should_alert else self.overlay_colors["violence_watch"] if violence.num_persons >= 2 else self.overlay_colors["safe"],
-            ),
-        ]
+    (
+        f"Fall: {'ALERT' if fall.should_alert else ('WATCH' if fall.is_candidate else 'NORMAL')} | "
+        f"hold={fall.horizontal_seconds:.1f}s",
+        self.overlay_colors["fall_alert"] if fall.should_alert else self.overlay_colors["fall_watch"] if fall.is_candidate else self.overlay_colors["safe"],
+    ),
+    (
+        f"Inactive: {'ALERT' if inactive.should_alert else ('WATCH' if inactive.person_present else 'NO PERSON')} | "
+        f"no_motion={inactive.inactive_seconds:.1f}s",
+        self.overlay_colors["inactive_alert"] if inactive.should_alert else self.overlay_colors["inactive_watch"] if inactive.person_present else self.overlay_colors["safe"],
+    ),
+    (
+        f"Violence: {'ALERT' if violence.should_alert else ('WATCH' if violence.num_persons >= 2 else 'NORMAL')} | "
+        f"persons={violence.num_persons}",
+        self.overlay_colors["violence_alert"] if violence.should_alert else self.overlay_colors["violence_watch"] if violence.num_persons >= 2 else self.overlay_colors["safe"],
+    ),
+]
 
         for line, color in lines:
-            cv2.putText(overlay, line, (25, y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-            y += 40
+            cv2.putText(overlay, line, (25, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+            y += 32
 
         if fall.bbox is not None:
             x, y1, w, h = fall.bbox

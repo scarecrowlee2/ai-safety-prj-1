@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import json
+import os
+from contextlib import suppress
 from collections import deque
 from pathlib import Path
 from string import Template
+from time import sleep
 
 from fastapi import APIRouter
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+import numpy as np
+from PIL import Image, ImageDraw
+
+from app.core.webcam_reader import WebcamConfig, WebcamOpenError, WebcamReader
 
 router = APIRouter(tags=["realtime"])
 api_router = APIRouter(prefix="/api/v1/realtime", tags=["realtime"])
@@ -15,6 +22,10 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 REALTIME_TEMPLATE_PATH = BASE_DIR / "templates" / "realtime_dashboard.html"
 REALTIME_EVENT_LOG_PATH = Path("data/realtime_events.jsonl")
 RECENT_EVENT_LIMIT = 6
+MJPEG_BOUNDARY = "frame"
+DEFAULT_CAMERA_WIDTH = 960
+DEFAULT_CAMERA_HEIGHT = 540
+DEFAULT_CAMERA_FPS = 15.0
 
 
 def _load_recent_events(limit: int = RECENT_EVENT_LIMIT) -> list[dict[str, object]]:
@@ -69,33 +80,14 @@ def realtime_dashboard() -> HTMLResponse:
 
 
 @router.get("/realtime/video")
-def realtime_video() -> Response:
-    """Return a lightweight SVG placeholder until realtime streaming is wired."""
+def realtime_video() -> StreamingResponse:
+    """Stream live webcam frames to the inner realtime dashboard as MJPEG."""
 
-    svg = """
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-label="Realtime video placeholder">
-      <defs>
-        <linearGradient id="bg" x1="0%" x2="100%" y1="0%" y2="100%">
-          <stop offset="0%" stop-color="#0f172a" />
-          <stop offset="100%" stop-color="#111827" />
-        </linearGradient>
-      </defs>
-      <rect width="960" height="540" fill="url(#bg)" />
-      <rect x="48" y="48" width="864" height="444" rx="28" fill="#020617" stroke="#334155" stroke-width="4" />
-      <circle cx="140" cy="114" r="10" fill="#22c55e" />
-      <text x="170" y="122" fill="#e2e8f0" font-size="28" font-family="Inter, Arial, sans-serif">Realtime stream placeholder</text>
-      <text x="96" y="220" fill="#94a3b8" font-size="30" font-family="Inter, Arial, sans-serif">
-        /realtime/video is reserved for Task 2-3 backend stream wiring.
-      </text>
-      <text x="96" y="278" fill="#94a3b8" font-size="26" font-family="Inter, Arial, sans-serif">
-        The dashboard asset migration is complete and safe to load now.
-      </text>
-      <text x="96" y="382" fill="#38bdf8" font-size="24" font-family="Inter, Arial, sans-serif">
-        Once MJPEG streaming is ready, replace this placeholder response.
-      </text>
-    </svg>
-    """.strip()
-    return Response(content=svg, media_type="image/svg+xml")
+    return StreamingResponse(
+        _generate_webcam_stream(),
+        media_type=f"multipart/x-mixed-replace; boundary={MJPEG_BOUNDARY}",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+    )
 
 
 @api_router.get("/events", response_class=JSONResponse)
@@ -109,3 +101,116 @@ def realtime_events(limit: int = RECENT_EVENT_LIMIT) -> dict[str, object]:
         "items": events,
         "log_path": str(REALTIME_EVENT_LOG_PATH),
     }
+
+
+def _generate_webcam_stream():
+    reader = WebcamReader(_webcam_config_from_env())
+
+    try:
+        reader.open()
+    except (WebcamOpenError, ImportError, OSError, RuntimeError) as exc:
+        message = f"웹캠을 열 수 없습니다: {exc}"
+        yield _mjpeg_chunk(_build_status_frame(message))
+        return
+
+    frame_delay = 1.0 / max(reader.fps, 1.0)
+
+    try:
+        for webcam_frame in reader.frames():
+            yield _mjpeg_chunk(_encode_jpeg(webcam_frame.image))
+            sleep(frame_delay)
+    finally:
+        with suppress(Exception):
+            reader.close()
+
+
+def _mjpeg_chunk(frame_bytes: bytes) -> bytes:
+    return (
+        f"--{MJPEG_BOUNDARY}\r\n"
+        "Content-Type: image/jpeg\r\n\r\n"
+    ).encode("utf-8") + frame_bytes + b"\r\n"
+
+
+def _build_status_frame(message: str) -> bytes:
+    image = Image.new("RGB", (DEFAULT_CAMERA_WIDTH, DEFAULT_CAMERA_HEIGHT), (15, 23, 42))
+    draw = ImageDraw.Draw(image)
+    draw.rounded_rectangle((48, 48, DEFAULT_CAMERA_WIDTH - 48, DEFAULT_CAMERA_HEIGHT - 48), radius=24, fill=(2, 6, 23), outline=(71, 85, 105), width=2)
+    draw.ellipse((98, 98, 122, 122), fill=(255, 165, 0))
+    draw.text((145, 104), "Realtime webcam unavailable", fill=(226, 232, 240))
+
+    for index, line in enumerate(_wrap_text(message, 52)):
+        y = 210 + index * 34
+        draw.text((96, y), line, fill=(148, 163, 184))
+
+    draw.text(
+        (96, DEFAULT_CAMERA_HEIGHT - 92),
+        "Connect a camera to replace this fallback frame.",
+        fill=(56, 189, 248),
+    )
+    return _pil_image_to_jpeg_bytes(image)
+
+
+def _encode_jpeg(image: np.ndarray) -> bytes:
+    return _pil_image_to_jpeg_bytes(Image.fromarray(image[:, :, ::-1]))
+
+
+def _wrap_text(value: str, max_chars: int) -> list[str]:
+    words = value.split()
+    if not words:
+        return [""]
+
+    lines: list[str] = []
+    current: list[str] = []
+    for word in words:
+        trial = " ".join([*current, word])
+        if current and len(trial) > max_chars:
+            lines.append(" ".join(current))
+            current = [word]
+            continue
+        current.append(word)
+
+    if current:
+        lines.append(" ".join(current))
+    return lines
+
+
+def _webcam_config_from_env() -> WebcamConfig:
+    raw_source = os.getenv("REALTIME_WEBCAM_SOURCE", "0").strip()
+    source: int | str = int(raw_source) if raw_source.isdigit() else raw_source
+
+    width = _optional_int_from_env("REALTIME_WEBCAM_WIDTH")
+    height = _optional_int_from_env("REALTIME_WEBCAM_HEIGHT")
+    fps = _optional_float_from_env("REALTIME_WEBCAM_FPS")
+
+    return WebcamConfig(
+        source=source,
+        width=width or DEFAULT_CAMERA_WIDTH,
+        height=height or DEFAULT_CAMERA_HEIGHT,
+        fps=fps or DEFAULT_CAMERA_FPS,
+    )
+
+
+def _optional_int_from_env(name: str) -> int | None:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return None
+    with suppress(ValueError):
+        return int(raw)
+    return None
+
+
+def _optional_float_from_env(name: str) -> float | None:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return None
+    with suppress(ValueError):
+        return float(raw)
+    return None
+
+
+def _pil_image_to_jpeg_bytes(image: Image.Image) -> bytes:
+    from io import BytesIO
+
+    buffer = BytesIO()
+    image.save(buffer, format="JPEG", quality=85)
+    return buffer.getvalue()

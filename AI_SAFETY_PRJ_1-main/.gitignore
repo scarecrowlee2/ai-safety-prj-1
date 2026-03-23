@@ -1,0 +1,108 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# Virtual environment
+.venv/
+venv/
+env/
+ENV/
+
+# Packaging / build
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# =========================
+# Environment / secrets
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# IDE / OS
+# =========================
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# =========================
+# Runtime data
+# =========================
+data/events.db
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+
+data/snapshots/
+data/metrics/
+data/outbox/
+data/tmp/
+uploads/
+temp/
+tmp/
+
+# Keep directory structure if needed
+!data/.gitkeep
+!uploads/.gitkeep
+
+# =========================
+# Logs
+# =========================
+*.log
+logs/
+*.jsonl
+
+# =========================
+# Media / test artifacts
+# =========================
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.jpg
+*.jpeg
+*.png
+
+# But allow docs/assets if you intentionally keep sample images
+#!docs/**/*.png
+#!docs/**/*.jpg
+
+# =========================
+# ML / model artifacts
+# =========================
+models/*.task
+models/*.tflite
+models/*.onnx
+models/*.pt
+models/*.pth
+models/*.engine
+models/checkpoints/
+weights/
+
+# Keep model folder structure if needed
+!models/.gitkeep
+
+# =========================
+# Optional notebook junk
+# =========================
+.ipynb_checkpoints/

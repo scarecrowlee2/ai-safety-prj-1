@@ -6,7 +6,6 @@ from typing import Any
 
 import math
 
-import cv2
 import numpy as np
 
 from app.core.config import settings
@@ -100,6 +99,8 @@ class FallDetector:
     def extract_keypoints(self, frame: np.ndarray, timestamp_ms: int) -> dict[str, Any] | None:
         if self.landmarker is None or mp is None:
             return None
+
+        import cv2
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
@@ -222,6 +223,4 @@ class FallDetector:
 
     # 이 메서드는 현재 감지 결과를 실제 이벤트로 발생시킬지 결정합니다.
     def should_emit(self, decision: FallDecision) -> bool:
-        if not self.enabled:
-            return False
-        return decision.horizontal_seconds >= settings.fall_hold_seconds
+        return self.enabled and decision.horizontal_seconds >= settings.fall_hold_seconds

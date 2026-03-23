@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Generator
 
-import cv2
 import numpy as np
 
 
@@ -32,6 +31,8 @@ class VideoReader:
 
     # 이 메서드는 입력 소스에서 프레임 또는 데이터를 순차적으로 읽어 반환합니다.
     def read(self) -> tuple[VideoMetadata, Generator[VideoFrame, None, None]]:
+        import cv2
+
         capture = cv2.VideoCapture(self.video_path)
         if not capture.isOpened():
             raise ValueError(f"비디오를 열 수 없습니다: {self.video_path}")

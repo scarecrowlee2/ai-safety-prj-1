@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from pathlib import Path
 
-import cv2
 import numpy as np
 
 from app.core.config import settings
@@ -19,6 +17,8 @@ class SnapshotStorage:
 
     # 이 메서드는 스냅샷 이미지를 저장하고 저장 기록을 반환합니다.
     def save(self, frame: np.ndarray, resident_id: int, event_type: EventType, detected_at: datetime) -> CaptureRecord:
+        import cv2
+
         local_time = detected_at.astimezone(self.tz)
         day_dir = self.base_dir / local_time.strftime("%Y-%m-%d") / f"resident_{resident_id}"
         day_dir.mkdir(parents=True, exist_ok=True)

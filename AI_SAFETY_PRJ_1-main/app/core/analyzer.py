@@ -33,11 +33,7 @@ class VideoAnalyzer:
             "warnings": warnings,
             "detectors": {
                 "fall": self.fall_detector.status(),
-                "inactive": {
-                    "enabled": True,
-                    "backend": "opencv_mog2",
-                    "reason": "",
-                },
+                "inactive": self.inactive_detector.status(),
             },
         }
 

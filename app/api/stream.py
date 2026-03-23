@@ -1,8 +1,14 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, StreamingResponse
+import json
+from collections import deque
+from pathlib import Path
+from string import Template
+
 import cv2
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.core.video import WebcamReader
 from app.detectors.fall import FallDetector
@@ -11,7 +17,16 @@ from app.detectors.violence import ViolenceDetector
 from app.storage.event_logger import EventLogger
 
 
-app = FastAPI(title="Realtime Safety Stream", version="1.1.0")
+app = FastAPI(title="Realtime Safety Stream", version="1.2.0")
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+TEMPLATES_DIR = BASE_DIR / "templates"
+STATIC_DIR = BASE_DIR / "static"
+REALTIME_TEMPLATE_PATH = TEMPLATES_DIR / "realtime_monitor.html"
+EVENT_LOG_PATH = Path("data/realtime_events.jsonl")
+RECENT_EVENT_LIMIT = 6
+
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # 이 메서드는 실시간 스트림에 사용할 감지기, 색상, 이벤트 로거를 준비합니다.
@@ -24,7 +39,7 @@ class RealtimeSafetyPipeline:
             pair_distance_threshold=220.0,
             hold_seconds=2.0,
         )
-        self.event_logger = EventLogger("data/realtime_events.jsonl")
+        self.event_logger = EventLogger(str(EVENT_LOG_PATH))
         self.last_alert_state = {"fall": False, "inactive": False, "violence": False}
         self.overlay_colors = {
             "safe": (0, 220, 0),
@@ -210,76 +225,57 @@ def generate_frames(camera_index: int = 0):
         reader.release()
 
 
-# 이 함수는 스트리밍 영상을 바로 볼 수 있는 간단한 테스트 페이지를 반환합니다.
+# 이 함수는 최근 JSONL 이벤트 몇 건을 시간순으로 반환합니다.
+def _load_recent_events(limit: int = RECENT_EVENT_LIMIT) -> list[dict]:
+    if not EVENT_LOG_PATH.exists():
+        return []
+
+    recent_lines = deque(maxlen=limit)
+    with EVENT_LOG_PATH.open("r", encoding="utf-8") as file:
+        for line in file:
+            stripped = line.strip()
+            if stripped:
+                recent_lines.append(stripped)
+
+    events = []
+    for raw_line in reversed(recent_lines):
+        try:
+            record = json.loads(raw_line)
+        except json.JSONDecodeError:
+            continue
+
+        events.append(
+            {
+                "event_type": record.get("event_type", "unknown"),
+                "message": record.get("message", "이벤트 정보가 없습니다."),
+                "logged_at": record.get("logged_at"),
+                "stream_timestamp_sec": record.get("stream_timestamp_sec"),
+            }
+        )
+    return events
+
+
+# 이 함수는 운영 대시보드 형태의 실시간 모니터링 페이지를 렌더링합니다.
 @app.get("/", response_class=HTMLResponse)
 def index():
-    return """
-    <html>
-      <head>
-        <title>AI Safety Realtime Monitor</title>
-        <style>
-          body {
-            margin: 0;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: Arial, sans-serif;
-            background: #111;
-            color: #eee;
-            text-align: center;
-          }
+    template = Template(REALTIME_TEMPLATE_PATH.read_text(encoding="utf-8"))
+    html = template.safe_substitute(
+        service_title="AI Safety Realtime Monitor",
+        service_description="낙상·무응답·폭행 이상 징후를 실시간으로 감시하는 운영 대시보드입니다.",
+        log_path=str(EVENT_LOG_PATH),
+        monitoring_state="LIVE",
+        recent_event_count=RECENT_EVENT_LIMIT,
+        css_path="/static/css/realtime_monitor.css",
+        js_path="/static/js/realtime_monitor.js",
+    )
+    return HTMLResponse(html)
 
-          .page {
-            width: min(1100px, 96vw);
-            padding: 32px 20px 40px;
-            box-sizing: border-box;
-          }
 
-          h1 {
-            margin: 0 0 12px;
-          }
-
-          p {
-            margin: 8px 0;
-          }
-
-          .video-shell {
-            width: min(960px, 92vw);
-            margin: 28px auto 0;
-            padding: 14px;
-            border: 1px solid #2f2f2f;
-            border-radius: 18px;
-            background: linear-gradient(180deg, #1b1b1b 0%, #151515 100%);
-            box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
-            box-sizing: border-box;
-          }
-
-          .video-shell img {
-            display: block;
-            width: min(100%, 960px);
-            height: auto;
-            max-height: 80vh;
-            margin: 0 auto;
-            border: 2px solid #444;
-            border-radius: 12px;
-            background: #000;
-            object-fit: contain;
-          }
-        </style>
-      </head>
-      <body>
-        <main class="page">
-          <h1>AI Safety Realtime Monitor</h1>
-          <p>낙상/무응답/폭행 의심 오버레이와 색상 경고가 함께 표시됩니다.</p>
-          <p>로그 파일: <code>data/realtime_events.jsonl</code></p>
-          <div class="video-shell">
-            <img src="/video" alt="AI Safety Realtime Monitor stream" />
-          </div>
-        </main>
-      </body>
-    </html>
-    """
+# 이 함수는 브라우저에서 최근 이벤트 목록을 읽을 수 있게 JSON으로 제공합니다.
+@app.get("/api/recent-events")
+def recent_events(limit: int = RECENT_EVENT_LIMIT):
+    limit = max(1, min(limit, 20))
+    return JSONResponse({"events": _load_recent_events(limit=limit), "log_path": str(EVENT_LOG_PATH)})
 
 
 # 이 함수는 브라우저로 실시간 영상 스트림을 반환하는 API 엔드포인트입니다.

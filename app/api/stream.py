@@ -215,12 +215,68 @@ def generate_frames(camera_index: int = 0):
 def index():
     return """
     <html>
-      <head><title>AI Safety Realtime Monitor</title></head>
-      <body style="font-family: Arial; background:#111; color:#eee; text-align:center;">
-        <h1>AI Safety Realtime Monitor</h1>
-        <p>낙상/무응답/폭행 의심 오버레이와 색상 경고가 함께 표시됩니다.</p>
-        <p>로그 파일: <code>data/realtime_events.jsonl</code></p>
-        <img src="/video" style="max-width:95vw; border:2px solid #444;" />
+      <head>
+        <title>AI Safety Realtime Monitor</title>
+        <style>
+          body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: Arial, sans-serif;
+            background: #111;
+            color: #eee;
+            text-align: center;
+          }
+
+          .page {
+            width: min(1100px, 96vw);
+            padding: 32px 20px 40px;
+            box-sizing: border-box;
+          }
+
+          h1 {
+            margin: 0 0 12px;
+          }
+
+          p {
+            margin: 8px 0;
+          }
+
+          .video-shell {
+            width: min(960px, 92vw);
+            margin: 28px auto 0;
+            padding: 14px;
+            border: 1px solid #2f2f2f;
+            border-radius: 18px;
+            background: linear-gradient(180deg, #1b1b1b 0%, #151515 100%);
+            box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+            box-sizing: border-box;
+          }
+
+          .video-shell img {
+            display: block;
+            width: min(100%, 960px);
+            height: auto;
+            max-height: 80vh;
+            margin: 0 auto;
+            border: 2px solid #444;
+            border-radius: 12px;
+            background: #000;
+            object-fit: contain;
+          }
+        </style>
+      </head>
+      <body>
+        <main class="page">
+          <h1>AI Safety Realtime Monitor</h1>
+          <p>낙상/무응답/폭행 의심 오버레이와 색상 경고가 함께 표시됩니다.</p>
+          <p>로그 파일: <code>data/realtime_events.jsonl</code></p>
+          <div class="video-shell">
+            <img src="/video" alt="AI Safety Realtime Monitor stream" />
+          </div>
+        </main>
       </body>
     </html>
     """

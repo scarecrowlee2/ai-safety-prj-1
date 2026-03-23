@@ -1,55 +1,169 @@
 from __future__ import annotations
 
-"""Scaffold webcam reader abstractions for future live capture support.
+"""Webcam-specific frame capture helpers for future realtime routes.
 
-This module is reserved for webcam-specific capture management so realtime input
-handling can remain separate from file-based video analysis in app.core.video.
+This module intentionally keeps live camera access separate from the uploaded
+file reader in :mod:`app.core.video`.
 """
 
 from dataclasses import dataclass
-from typing import Any
+import os
+from typing import TYPE_CHECKING, Iterator
+
+if TYPE_CHECKING:
+    import numpy as np
+
+
+class WebcamOpenError(RuntimeError):
+    """Raised when a webcam source cannot be opened."""
 
 
 @dataclass(slots=True)
 class WebcamConfig:
-    """Minimal configuration container for a future webcam capture source."""
+    """Configuration for a live webcam capture source."""
 
     source: int | str = 0
     width: int | None = None
     height: int | None = None
     fps: float | None = None
+    backend: int | None = None
+
+
+@dataclass(slots=True)
+class WebcamFrame:
+    """A single frame captured from a webcam source."""
+
+    frame_index: int
+    timestamp_sec: float
+    image: np.ndarray
 
 
 class WebcamReader:
-    """Placeholder webcam reader interface.
-
-    Future work can wrap cv2.VideoCapture or another backend while keeping live
-    capture concerns isolated from upload-based processing.
-    """
+    """Small reusable wrapper around ``cv2.VideoCapture`` for webcam input."""
 
     def __init__(self, config: WebcamConfig | None = None) -> None:
         self.config = config or WebcamConfig()
-        self._is_open = False
+        self._capture = None
+        self._fps = float(self.config.fps) if self.config.fps and self.config.fps > 0 else 0.0
+        self._frame_index = 0
 
     def open(self) -> None:
-        """Prepare the webcam source for future frame reads."""
+        """Open the configured webcam source if it is not already open."""
 
-        self._is_open = True
+        if self.is_open:
+            return
 
-    def read_frame(self) -> Any | None:
-        """Return the next webcam frame when live capture is implemented later."""
+        capture = self._create_capture()
+        if not capture.isOpened():
+            capture.release()
+            raise WebcamOpenError(f"Unable to open webcam source: {self.config.source!r}")
 
-        if not self._is_open:
+        self._apply_capture_settings(capture)
+        detected_fps = float(capture.get(self._cv2().CAP_PROP_FPS) or 0.0)
+        if detected_fps > 0:
+            self._fps = detected_fps
+
+        self._capture = capture
+        self._frame_index = 0
+
+    def read_frame(self) -> WebcamFrame | None:
+        """Read the next webcam frame or return ``None`` when capture ends."""
+
+        if not self.is_open:
+            self.open()
+
+        assert self._capture is not None
+        ok, frame = self._capture.read()
+        if not ok:
             return None
-        return None
+
+        frame_index = self._frame_index
+        self._frame_index += 1
+        fps = self.fps
+        timestamp_sec = frame_index / fps if fps > 0 else 0.0
+        return WebcamFrame(
+            frame_index=frame_index,
+            timestamp_sec=timestamp_sec,
+            image=frame,
+        )
+
+    def frames(self) -> Iterator[WebcamFrame]:
+        """Yield webcam frames until capture stops producing frames."""
+
+        while True:
+            frame = self.read_frame()
+            if frame is None:
+                break
+            yield frame
 
     def close(self) -> None:
-        """Release any future webcam resources and mark the reader closed."""
+        """Release the webcam resource safely."""
 
-        self._is_open = False
+        if self._capture is not None:
+            self._capture.release()
+            self._capture = None
+
+    def release(self) -> None:
+        """Backward-compatible alias for :meth:`close`."""
+
+        self.close()
 
     @property
     def is_open(self) -> bool:
-        """Expose whether the placeholder reader is currently marked as open."""
+        """Whether the webcam capture is currently open."""
 
-        return self._is_open
+        return self._capture is not None and bool(self._capture.isOpened())
+
+    @property
+    def fps(self) -> float:
+        """Reported webcam FPS, with a conservative fallback when unavailable."""
+
+        return self._fps if self._fps > 0 else 30.0
+
+    def __enter__(self) -> WebcamReader:
+        self.open()
+        return self
+
+    def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
+        self.close()
+
+    @staticmethod
+    def _cv2():
+        import cv2
+
+        return cv2
+
+    def _create_capture(self):
+        cv2 = self._cv2()
+
+        if self.config.backend is not None:
+            return cv2.VideoCapture(self.config.source, self.config.backend)
+
+        if isinstance(self.config.source, int) and os.name == "nt" and hasattr(cv2, "CAP_DSHOW"):
+            capture = cv2.VideoCapture(self.config.source, cv2.CAP_DSHOW)
+            if capture.isOpened():
+                return capture
+            capture.release()
+
+        return cv2.VideoCapture(self.config.source)
+
+    def _apply_capture_settings(self, capture) -> None:
+        cv2 = self._cv2()
+
+        if self.config.width is not None:
+            capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.width)
+        if self.config.height is not None:
+            capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.height)
+        if self.config.fps is not None and self.config.fps > 0:
+            capture.set(cv2.CAP_PROP_FPS, self.config.fps)
+
+        if self.config.fps is not None and self.config.fps > 0:
+            self._fps = float(self.config.fps)
+
+
+__all__ = [
+    "WebcamConfig",
+    "WebcamFrame",
+    "WebcamOpenError",
+    "WebcamReader",
+]

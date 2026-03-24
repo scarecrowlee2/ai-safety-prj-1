@@ -41,6 +41,7 @@ class FallDetector:
         self.backend = "none"
         self.horizontal_streak_seconds = 0.0
         self._previous_timestamp: float | None = None
+        self._last_video_timestamp_ms: int | None = None
         self.load_model()
 
     # 이 메서드는 낙상 감지에 필요한 모델과 백엔드를 로드합니다.
@@ -117,6 +118,7 @@ class FallDetector:
         self.backend = "none"
         self.landmarker = None
         self.hog = None
+        self._last_video_timestamp_ms = None
 
     # 이 메서드는 모델이나 리소스를 안전하게 정리합니다.
     def close(self) -> None:
@@ -124,6 +126,7 @@ class FallDetector:
             self.landmarker.close()
         self.landmarker = None
         self.hog = None
+        self._last_video_timestamp_ms = None
 
     # 이 메서드는 감지기의 현재 활성화 상태와 사유를 반환합니다.
     def status(self) -> dict[str, Any]:
@@ -145,7 +148,16 @@ class FallDetector:
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-        result = self.landmarker.detect_for_video(mp_image, timestamp_ms)
+        monotonic_timestamp_ms = self._ensure_monotonic_video_timestamp(timestamp_ms)
+        try:
+            result = self.landmarker.detect_for_video(mp_image, monotonic_timestamp_ms)
+            self._last_video_timestamp_ms = monotonic_timestamp_ms
+        except ValueError as exc:
+            if "monotonically increasing" not in str(exc).lower():
+                raise
+            monotonic_timestamp_ms = self._ensure_monotonic_video_timestamp(monotonic_timestamp_ms + 1)
+            result = self.landmarker.detect_for_video(mp_image, monotonic_timestamp_ms)
+            self._last_video_timestamp_ms = monotonic_timestamp_ms
         pose_landmarks = getattr(result, "pose_landmarks", None) or []
         if not pose_landmarks:
             return None
@@ -170,6 +182,14 @@ class FallDetector:
             "mean_visibility": sum(confidences) / max(len(confidences), 1),
             "image_size": (image_w, image_h),
         }
+
+    def _ensure_monotonic_video_timestamp(self, timestamp_ms: int) -> int:
+        timestamp_ms = int(timestamp_ms)
+        if self._last_video_timestamp_ms is None:
+            return timestamp_ms
+        if timestamp_ms <= self._last_video_timestamp_ms:
+            return self._last_video_timestamp_ms + 1
+        return timestamp_ms
 
     def _extract_hog_detection(self, frame: np.ndarray) -> dict[str, Any] | None:
         if self.hog is None:

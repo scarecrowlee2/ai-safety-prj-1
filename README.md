@@ -2,7 +2,7 @@
 
 ## Official main application root
 
-The **official FastAPI application** is now the inner project at:
+The **official FastAPI application** is the inner project at:
 
 - `AI_SAFETY_PRJ_1-main/`
 
@@ -23,14 +23,14 @@ Primary routes served by the official app include:
 - `/api/v1/realtime/events`
 - upload-analysis routes under `/api/v1/analyze/*`
 
-## Legacy outer realtime app status
+## Legacy material status
 
-The previous outer realtime app has been intentionally isolated under:
+Legacy outer realtime artifacts were finalized into documentation + archive form:
 
-- `legacy/outer-realtime-app/`
+- Docs stub: `legacy/outer-realtime-app/`
+- Archived reference code/assets: `legacy/archived_realtime_reference/`
 
-This outer app is now **legacy/reference-only** and is **not** the primary execution path.
-Do not use it as the default runtime unless you are explicitly doing rollback/reference work.
+The archived reference area is **not** a runnable app and exists only for historical/UI rollback reference.
 
 ## Developer note
 

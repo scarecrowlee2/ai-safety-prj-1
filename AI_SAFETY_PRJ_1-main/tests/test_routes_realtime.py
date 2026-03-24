@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -61,6 +62,7 @@ def test_realtime_dashboard_points_to_inner_video_route() -> None:
     assert response.status_code == 200
     assert 'src="/realtime/video"' in response.text
     assert 'data-overlay-endpoint="/api/v1/realtime/overlay/latest"' in response.text
+    assert 'data-overlay-stream-endpoint="/api/v1/realtime/overlay/stream"' in response.text
 
 
 def test_realtime_video_streams_latest_capture_frame(monkeypatch) -> None:
@@ -300,9 +302,47 @@ def test_realtime_overlay_stream_returns_sse_event(monkeypatch) -> None:
 
     async def _read_first_event() -> str:
         stream = routes_realtime._generate_overlay_event_stream(request)
-        return await stream.__anext__()
+        try:
+            return await stream.__anext__()
+        finally:
+            await stream.aclose()
 
     event = asyncio.run(_read_first_event())
 
     assert event.startswith("event: overlay\n")
+    assert event.endswith("\n\n")
     assert "data: " in event
+
+    data_line = next(line for line in event.splitlines() if line.startswith("data: "))
+    payload = json.loads(data_line.removeprefix("data: "))
+    assert payload["ready"] is True
+    assert payload["frame_id"] == 99
+    assert payload["box_coord_system"] == "normalized_xyxy"
+    assert payload["overlay_stale_threshold_ms"] >= 0
+    assert isinstance(payload["is_stale"], bool)
+    assert payload["objects"] == [{"label": "person"}]
+
+
+
+def test_realtime_overlay_latest_uses_default_box_coord_system_when_missing() -> None:
+    snapshot = SimpleNamespace(
+        frame_id=None,
+        timestamp_sec=None,
+        captured_at=None,
+        analyzed_at=None,
+        source_size=None,
+        states={},
+        objects=[],
+        banners=[],
+        ready=False,
+        message="waiting",
+        error=None,
+    )
+    payload = routes_realtime._build_overlay_payload(
+        snapshot=snapshot,
+        capture_status=SimpleNamespace(open_failed=False),
+    )
+
+    assert payload["box_coord_system"] == routes_realtime.BOX_COORD_SYSTEM_NORMALIZED_XYXY
+    assert payload["overlay_age_ms"] is None
+    assert payload["is_stale"] is False

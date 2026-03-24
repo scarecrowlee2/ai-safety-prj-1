@@ -19,6 +19,9 @@ from app.storage.snapshots import SnapshotStorage
 
 
 class VideoAnalyzer:
+    UPLOAD_SUPPORTED_DETECTORS: tuple[str, ...] = ("fall", "inactive")
+    REALTIME_ONLY_DETECTORS: tuple[str, ...] = ("violence",)
+
     # 이 메서드는 클래스가 동작하는 데 필요한 초기 상태와 객체를 준비합니다.
     def __init__(self) -> None:
         self.tz, self.timezone_warning = resolve_timezone(settings.app_timezone)
@@ -33,12 +36,40 @@ class VideoAnalyzer:
     # 이 메서드는 현재 감지기 상태와 경고 정보를 진단용으로 반환합니다.
     def diagnostics(self) -> dict:
         warnings = self._build_warnings()
+        fall_status = self.fall_detector.status()
+        inactive_status = self.inactive_detector.status()
+        unsupported_detectors = {
+            detector_name: {
+                "supported": False,
+                "enabled": False,
+                "mode": "unsupported",
+                "reason": "not implemented in upload analyzer (available in realtime pipeline only)",
+            }
+            for detector_name in self.REALTIME_ONLY_DETECTORS
+        }
+
         return {
+            "analyzer": {
+                "name": "upload_video_analyzer",
+                "pipeline_scope": "upload",
+            },
             "timezone": settings.app_timezone,
             "warnings": warnings,
+            "capabilities": {
+                "upload_supported_detectors": list(self.UPLOAD_SUPPORTED_DETECTORS),
+                "upload_unsupported_detectors": list(self.REALTIME_ONLY_DETECTORS),
+                "realtime_pipeline_detectors": [*self.UPLOAD_SUPPORTED_DETECTORS, *self.REALTIME_ONLY_DETECTORS],
+            },
             "detectors": {
-                "fall": self.fall_detector.status(),
-                "inactive": self.inactive_detector.status(),
+                "fall": {
+                    "supported": True,
+                    **fall_status,
+                },
+                "inactive": {
+                    "supported": True,
+                    **inactive_status,
+                },
+                **unsupported_detectors,
             },
         }
 

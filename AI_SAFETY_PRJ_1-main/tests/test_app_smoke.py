@@ -19,10 +19,14 @@ class _DummyAnalyzeResult:
 class _DummyAnalyzer:
     def diagnostics(self) -> dict:
         return {
+            "capabilities": {
+                "upload_supported_detectors": ["fall", "inactive"],
+                "upload_unsupported_detectors": ["violence"],
+            },
             "detectors": {
                 "fall": {"enabled": False},
                 "inactive": {"enabled": False},
-                "violence": {"enabled": False},
+                "violence": {"enabled": False, "mode": "unsupported"},
             }
         }
 
@@ -60,6 +64,8 @@ def test_health_endpoint_smoke(monkeypatch) -> None:
     assert body["status"] == "ok"
     assert body["app"] == settings.app_name
     assert "detectors" in body
+    assert body["feature_scope"]["upload_analyzer_supported_detectors"] == ["fall", "inactive"]
+    assert body["feature_scope"]["upload_analyzer_unsupported_detectors"] == ["violence"]
 
 
 def test_realtime_events_endpoint_smoke(monkeypatch) -> None:

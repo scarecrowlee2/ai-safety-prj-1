@@ -6,7 +6,7 @@ from typing import Any
 import numpy as np
 
 from app.detectors.adapters import run_fall_detector, run_inactive_detector, run_violence_detector
-from app.detectors.contracts import DetectorInput
+from app.detectors.contracts import DetectorInput, OverlayAnnotation
 from app.detectors.fall import FallDecision, FallDetector
 from app.detectors.inactive import InactiveDecision, InactiveDetector
 from app.detectors.violence import ViolenceDecision, ViolenceDetector
@@ -83,7 +83,14 @@ class RealtimePipeline:
         )
         self._log_new_alerts(fall=fall, inactive=inactive, violence=violence, states=states, timestamp_sec=timestamp_sec)
 
-        self._draw_overlay(overlay=overlay, states=states, fall=fall, inactive=inactive, violence=violence)
+        self._draw_overlay(
+            overlay=overlay,
+            states=states,
+            fall=fall,
+            inactive=inactive,
+            violence=violence,
+            violence_overlays=violence_result.overlays,
+        )
 
         metadata = {
             "timestamp_sec": timestamp_sec,
@@ -128,6 +135,7 @@ class RealtimePipeline:
         fall: FallDecision,
         inactive: InactiveDecision,
         violence: ViolenceDecision,
+        violence_overlays: list[OverlayAnnotation],
     ) -> None:
         cv2 = self._get_cv2()
         if cv2 is None:
@@ -168,6 +176,26 @@ class RealtimePipeline:
         for line, color in lines:
             cv2.putText(overlay, line, (25, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
             y += 32
+
+
+        for annotation in violence_overlays:
+            if annotation.box_xyxy is None:
+                continue
+            x1, y1, x2, y2 = annotation.box_xyxy
+            box_color = annotation.color_bgr or (
+                self.overlay_colors["violence_alert"] if states["violence_alert"] else self.overlay_colors["violence_watch"]
+            )
+            box_thickness = 4 if states["violence_alert"] else 2
+            cv2.rectangle(overlay, (x1, y1), (x2, y2), box_color, box_thickness)
+            cv2.putText(
+                overlay,
+                annotation.label,
+                (x1, max(20, y1 - 6)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.65,
+                box_color,
+                2,
+            )
 
         alerts = []
         if states["fall_alert"]:

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import suppress
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 from string import Template
-from time import sleep
+from time import monotonic, sleep
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 import numpy as np
 from PIL import Image, ImageDraw
@@ -35,6 +37,9 @@ DEFAULT_CAMERA_WIDTH = settings.realtime_webcam_width
 DEFAULT_CAMERA_HEIGHT = settings.realtime_webcam_height
 STATUS_EVENT_TYPES = ("fall", "inactive", "violence")
 STATUS_EVENT_RECENCY_SECONDS = 60
+OVERLAY_STREAM_EVENT = "overlay"
+OVERLAY_STREAM_POLL_SEC = 0.2
+OVERLAY_STREAM_HEARTBEAT_SEC = 15.0
 
 
 realtime_event_logger = EventLogger(str(REALTIME_EVENT_LOG_PATH))
@@ -115,30 +120,22 @@ def realtime_overlay_latest() -> dict[str, object]:
 
     snapshot = get_realtime_analysis_worker().get_latest_snapshot()
     capture_status = get_realtime_capture_service().get_status()
-    source_size = (
-        {
-            "width": snapshot.source_size[0],
-            "height": snapshot.source_size[1],
-        }
-        if snapshot.source_size is not None
-        else None
-    )
+    return _build_overlay_payload(snapshot=snapshot, capture_status=capture_status)
 
-    return {
-        "ready": snapshot.ready,
-        "frame_id": snapshot.frame_id,
-        "timestamp_sec": snapshot.timestamp_sec,
-        "captured_at": _to_iso8601(snapshot.captured_at),
-        "analyzed_at": _to_iso8601(snapshot.analyzed_at),
-        "source_size": source_size,
-        "states": snapshot.states,
-        "box_coord_system": getattr(snapshot, "box_coord_system", BOX_COORD_SYSTEM_NORMALIZED_XYXY),
-        "objects": snapshot.objects,
-        "banners": snapshot.banners,
-        "message": snapshot.message,
-        "open_failed": capture_status.open_failed,
-        "error": snapshot.error,
-    }
+
+@api_router.get("/overlay/stream")
+def realtime_overlay_stream(request: Request) -> StreamingResponse:
+    """Stream latest overlay snapshots as SSE events."""
+
+    return StreamingResponse(
+        _generate_overlay_event_stream(request),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 def _summarize_realtime_status(events: list[dict[str, object]]) -> dict[str, str]:
@@ -183,6 +180,70 @@ def _to_iso8601(value: datetime | None) -> str | None:
     if value is None:
         return None
     return value.isoformat()
+
+
+def _build_overlay_payload(*, snapshot: object, capture_status: object) -> dict[str, object]:
+    source_size = (
+        {
+            "width": snapshot.source_size[0],
+            "height": snapshot.source_size[1],
+        }
+        if snapshot.source_size is not None
+        else None
+    )
+    return {
+        "ready": snapshot.ready,
+        "frame_id": snapshot.frame_id,
+        "timestamp_sec": snapshot.timestamp_sec,
+        "captured_at": _to_iso8601(snapshot.captured_at),
+        "analyzed_at": _to_iso8601(snapshot.analyzed_at),
+        "source_size": source_size,
+        "states": snapshot.states,
+        "box_coord_system": getattr(snapshot, "box_coord_system", BOX_COORD_SYSTEM_NORMALIZED_XYXY),
+        "objects": snapshot.objects,
+        "banners": snapshot.banners,
+        "message": snapshot.message,
+        "open_failed": capture_status.open_failed,
+        "error": snapshot.error,
+    }
+
+
+def _overlay_stream_dedupe_key(payload: dict[str, object]) -> tuple[object, ...]:
+    frame_id = payload.get("frame_id")
+    if frame_id is not None:
+        return ("frame", frame_id)
+    return (
+        "state",
+        payload.get("ready"),
+        payload.get("message"),
+        payload.get("error"),
+        payload.get("open_failed"),
+    )
+
+
+async def _generate_overlay_event_stream(request: Request):
+    last_key: tuple[object, ...] | None = None
+    last_heartbeat_at = monotonic()
+
+    while True:
+        if await request.is_disconnected():
+            break
+
+        snapshot = get_realtime_analysis_worker().get_latest_snapshot()
+        capture_status = get_realtime_capture_service().get_status()
+        payload = _build_overlay_payload(snapshot=snapshot, capture_status=capture_status)
+        key = _overlay_stream_dedupe_key(payload)
+
+        if key != last_key:
+            data = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+            yield f"event: {OVERLAY_STREAM_EVENT}\ndata: {data}\n\n"
+            last_key = key
+            last_heartbeat_at = monotonic()
+        elif monotonic() - last_heartbeat_at >= OVERLAY_STREAM_HEARTBEAT_SEC:
+            yield ": keep-alive\n\n"
+            last_heartbeat_at = monotonic()
+
+        await asyncio.sleep(OVERLAY_STREAM_POLL_SEC)
 
 
 def _generate_webcam_stream():

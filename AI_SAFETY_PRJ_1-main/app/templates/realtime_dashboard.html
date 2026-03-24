@@ -64,26 +64,32 @@
               </div>
             </div>
             <div class="status-list">
-              <div class="status-item">
+              <div class="status-item" id="status-item-fall" data-status-type="fall">
                 <div>
                   <strong>낙상 / 기절</strong>
                   <p>넘어짐, 쓰러짐, 의식 저하 의심 상황</p>
                 </div>
-                <span class="status-badge normal">정상</span>
+                <span id="status-badge-fall" class="status-badge normal" data-status-role="badge">
+                  <span id="status-text-fall" data-status-role="text">정상</span>
+                </span>
               </div>
-              <div class="status-item">
+              <div class="status-item" id="status-item-inactive" data-status-type="inactive">
                 <div>
                   <strong>비활동 / 무응답</strong>
                   <p>장시간 움직임 없음, 반응 저하 의심</p>
                 </div>
-                <span class="status-badge normal">정상</span>
+                <span id="status-badge-inactive" class="status-badge normal" data-status-role="badge">
+                  <span id="status-text-inactive" data-status-role="text">정상</span>
+                </span>
               </div>
-              <div class="status-item">
+              <div class="status-item" id="status-item-violence" data-status-type="violence">
                 <div>
                   <strong>폭행</strong>
                   <p>격한 접촉, 높은 움직임, 근접 충돌 의심</p>
                 </div>
-                <span class="status-badge normal">정상</span>
+                <span id="status-badge-violence" class="status-badge normal" data-status-role="badge">
+                  <span id="status-text-violence" data-status-role="text">정상</span>
+                </span>
               </div>
             </div>
           </section>

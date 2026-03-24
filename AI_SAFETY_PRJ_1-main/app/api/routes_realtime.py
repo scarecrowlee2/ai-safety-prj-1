@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from contextlib import suppress
 from pathlib import Path
 from string import Template
@@ -12,6 +11,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from app.core.realtime_pipeline import RealtimePipeline
+from app.core.config import settings
 from app.storage.event_logger import EventLogger
 from app.core.webcam_reader import WebcamConfig, WebcamOpenError, WebcamReader
 
@@ -20,12 +20,12 @@ api_router = APIRouter(prefix="/api/v1/realtime", tags=["realtime"])
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 REALTIME_TEMPLATE_PATH = BASE_DIR / "templates" / "realtime_dashboard.html"
-REALTIME_EVENT_LOG_PATH = Path("data/realtime_events.jsonl")
-RECENT_EVENT_LIMIT = 6
-MJPEG_BOUNDARY = "frame"
-DEFAULT_CAMERA_WIDTH = 960
-DEFAULT_CAMERA_HEIGHT = 540
-DEFAULT_CAMERA_FPS = 15.0
+REALTIME_EVENT_LOG_PATH = settings.realtime_event_log_path
+RECENT_EVENT_LIMIT = settings.realtime_recent_event_limit
+RECENT_EVENT_MAX_LIMIT = settings.realtime_recent_event_max_limit
+MJPEG_BOUNDARY = settings.realtime_mjpeg_boundary
+DEFAULT_CAMERA_WIDTH = settings.realtime_webcam_width
+DEFAULT_CAMERA_HEIGHT = settings.realtime_webcam_height
 
 
 realtime_event_logger = EventLogger(str(REALTIME_EVENT_LOG_PATH))
@@ -72,7 +72,7 @@ def realtime_video() -> StreamingResponse:
 def realtime_events(limit: int = RECENT_EVENT_LIMIT) -> dict[str, object]:
     """Return recent realtime events if available, or an empty feed payload."""
 
-    limit = max(1, min(limit, 20))
+    limit = max(1, min(limit, RECENT_EVENT_MAX_LIMIT))
     events = _load_recent_events(limit=limit)
     return {
         "events": events,
@@ -156,37 +156,16 @@ def _wrap_text(value: str, max_chars: int) -> list[str]:
 
 
 def _webcam_config_from_env() -> WebcamConfig:
-    raw_source = os.getenv("REALTIME_WEBCAM_SOURCE", "0").strip()
+    raw_source = settings.realtime_webcam_source
     source: int | str = int(raw_source) if raw_source.isdigit() else raw_source
-
-    width = _optional_int_from_env("REALTIME_WEBCAM_WIDTH")
-    height = _optional_int_from_env("REALTIME_WEBCAM_HEIGHT")
-    fps = _optional_float_from_env("REALTIME_WEBCAM_FPS")
 
     return WebcamConfig(
         source=source,
-        width=width or DEFAULT_CAMERA_WIDTH,
-        height=height or DEFAULT_CAMERA_HEIGHT,
-        fps=fps or DEFAULT_CAMERA_FPS,
+        width=settings.realtime_webcam_width,
+        height=settings.realtime_webcam_height,
+        fps=settings.realtime_webcam_fps,
+        backend=settings.realtime_webcam_backend,
     )
-
-
-def _optional_int_from_env(name: str) -> int | None:
-    raw = os.getenv(name)
-    if raw is None or not raw.strip():
-        return None
-    with suppress(ValueError):
-        return int(raw)
-    return None
-
-
-def _optional_float_from_env(name: str) -> float | None:
-    raw = os.getenv(name)
-    if raw is None or not raw.strip():
-        return None
-    with suppress(ValueError):
-        return float(raw)
-    return None
 
 
 def _pil_image_to_jpeg_bytes(image: Image.Image) -> bytes:

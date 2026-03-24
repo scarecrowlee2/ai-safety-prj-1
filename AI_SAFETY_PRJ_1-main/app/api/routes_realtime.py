@@ -41,6 +41,7 @@ OVERLAY_STREAM_EVENT = "overlay"
 OVERLAY_STREAM_POLL_SEC = 0.2
 OVERLAY_STREAM_HEARTBEAT_SEC = max(1.0, settings.realtime_sse_keepalive_interval_sec)
 OVERLAY_STALE_THRESHOLD_MS = max(0, settings.realtime_overlay_stale_threshold_ms)
+OVERLAY_TRANSPORT_RECOMMENDED_MODE = "sse"
 
 
 realtime_event_logger = EventLogger(str(REALTIME_EVENT_LOG_PATH))
@@ -75,6 +76,7 @@ def realtime_dashboard() -> HTMLResponse:
         video_path="/realtime/video",
         events_path="/api/v1/realtime/events",
         overlay_path="/api/v1/realtime/overlay/latest",
+        diagnostics_path="/api/v1/realtime/diagnostics",
     )
     return HTMLResponse(html)
 
@@ -122,6 +124,39 @@ def realtime_overlay_latest() -> dict[str, object]:
     snapshot = get_realtime_analysis_worker().get_latest_snapshot()
     capture_status = get_realtime_capture_service().get_status()
     return _build_overlay_payload(snapshot=snapshot, capture_status=capture_status)
+
+
+@api_router.get("/diagnostics", response_class=JSONResponse)
+def realtime_diagnostics() -> dict[str, object]:
+    """Return compact runtime diagnostics for capture/analysis/overlay health."""
+
+    capture_status = get_realtime_capture_service().get_status()
+    analysis_worker = get_realtime_analysis_worker()
+    snapshot = analysis_worker.get_latest_snapshot()
+    now = datetime.now(timezone.utc)
+
+    return {
+        "capture": {
+            "running": capture_status.running,
+            "open_failed": capture_status.open_failed,
+            "last_error": capture_status.last_error,
+            "latest_frame": {
+                "frame_id": capture_status.frame_id,
+                "captured_at": _to_iso8601(capture_status.last_frame_at),
+            },
+        },
+        "analysis": {
+            "running": analysis_worker.is_running,
+            "latest_frame": {
+                "frame_id": snapshot.frame_id,
+                "analyzed_at": _to_iso8601(snapshot.analyzed_at),
+            },
+        },
+        "overlay": {
+            "transport_recommended_mode": OVERLAY_TRANSPORT_RECOMMENDED_MODE,
+        },
+        "server_now": now.isoformat(),
+    }
 
 
 @api_router.get("/overlay/stream")

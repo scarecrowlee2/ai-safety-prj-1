@@ -3,6 +3,7 @@ const eventList = document.querySelector('#event-list');
 const refreshLabel = document.querySelector('#event-refresh-label');
 const eventsEndpoint = page?.dataset.eventsEndpoint;
 const statusEndpoint = buildStatusEndpoint(eventsEndpoint);
+const diagnosticsEndpoint = page?.dataset.diagnosticsEndpoint || null;
 const overlayEndpoint =
   page?.dataset.overlayEndpoint || document.querySelector('.video-frame')?.dataset.overlayEndpoint || null;
 const overlayStreamEndpoint =
@@ -24,6 +25,7 @@ const overlayPollMs = 400;
 const overlaySseFallbackDelayMs = 4000;
 const defaultOverlayStaleThresholdMs = 3000;
 const overlayStaleCheckMs = 500;
+const diagnosticsPollMs = 5000;
 const defaultBoxCoordSystem = 'normalized_xyxy';
 const overlayColor = {
   normal: '#22c55e',
@@ -52,6 +54,23 @@ function formatLoggedAt(value) {
     dateStyle: 'short',
     timeStyle: 'medium',
   }).format(date);
+}
+
+function formatCompactTime(value) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return new Intl.DateTimeFormat('ko-KR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(date);
+}
+
+function formatLatestFrame(frameId, timestamp) {
+  const frameText = Number.isFinite(frameId) ? `#${frameId}` : '#-';
+  const timeText = formatCompactTime(timestamp);
+  return `${frameText} / ${timeText}`;
 }
 
 function applyStatusVisual(badgeEl, textEl, state) {
@@ -334,6 +353,17 @@ let overlayFallbackTimerId = null;
 let overlayEventSource = null;
 let overlayStaleTimerId = null;
 
+function renderOverlayConnectionMode(mode) {
+  const modeEl = document.querySelector('#diag-overlay-mode');
+  if (!modeEl) return;
+  modeEl.textContent = mode === 'sse' ? 'sse' : 'polling';
+}
+
+function setOverlayConnectionMode(mode) {
+  overlayConnectionMode = mode === 'sse' ? 'sse' : 'polling';
+  renderOverlayConnectionMode(overlayConnectionMode);
+}
+
 function resolveOverlayStaleThreshold(payload) {
   const threshold = Number(payload?.overlay_stale_threshold_ms);
   if (Number.isFinite(threshold) && threshold >= 0) {
@@ -386,7 +416,7 @@ function stopOverlayPolling() {
 
 function startOverlayPolling() {
   if (overlayPollTimerId !== null) return;
-  overlayConnectionMode = 'polling';
+  setOverlayConnectionMode('polling');
   overlayPollTimerId = window.setInterval(loadOverlaySnapshot, overlayPollMs);
 }
 
@@ -423,7 +453,7 @@ function startOverlaySse() {
   }
 
   stopOverlayPolling();
-  overlayConnectionMode = 'sse';
+  setOverlayConnectionMode('sse');
 
   try {
     overlayEventSource = new EventSource(overlayStreamEndpoint);
@@ -451,6 +481,43 @@ function startOverlaySse() {
   overlayEventSource.onerror = () => {
     fallbackToOverlayPolling();
   };
+}
+
+function setDiagnosticsValue(id, value) {
+  const el = document.querySelector(id);
+  if (!el) return;
+  el.textContent = value;
+}
+
+function renderDiagnostics(payload) {
+  const capture = payload?.capture || {};
+  const captureLatest = capture?.latest_frame || {};
+  const analysis = payload?.analysis || {};
+  const analysisLatest = analysis?.latest_frame || {};
+  const overlay = payload?.overlay || {};
+
+  const captureState = capture.running ? 'running' : 'stopped';
+  const analysisState = analysis.running ? 'running' : 'stopped';
+
+  setDiagnosticsValue('#diag-capture-running', capture.open_failed ? `${captureState} (open_failed)` : captureState);
+  setDiagnosticsValue('#diag-capture-latest', formatLatestFrame(captureLatest.frame_id, captureLatest.captured_at));
+  setDiagnosticsValue('#diag-capture-error', capture.last_error || '-');
+  setDiagnosticsValue('#diag-analysis-running', analysisState);
+  setDiagnosticsValue('#diag-analysis-latest', formatLatestFrame(analysisLatest.frame_id, analysisLatest.analyzed_at));
+  setDiagnosticsValue('#diag-overlay-recommended', overlay.transport_recommended_mode || '-');
+  setDiagnosticsValue('#diag-updated-at', formatCompactTime(payload?.server_now));
+  renderOverlayConnectionMode(overlayConnectionMode);
+}
+
+function renderDiagnosticsError() {
+  setDiagnosticsValue('#diag-capture-running', 'unavailable');
+  setDiagnosticsValue('#diag-capture-latest', '-');
+  setDiagnosticsValue('#diag-capture-error', 'diagnostics API 오류');
+  setDiagnosticsValue('#diag-analysis-running', 'unavailable');
+  setDiagnosticsValue('#diag-analysis-latest', '-');
+  setDiagnosticsValue('#diag-overlay-recommended', '-');
+  setDiagnosticsValue('#diag-updated-at', '-');
+  renderOverlayConnectionMode(overlayConnectionMode);
 }
 
 function startOverlayStaleWatcher() {
@@ -527,6 +594,22 @@ async function loadOverlaySnapshot() {
   }
 }
 
+async function loadDiagnostics() {
+  if (!diagnosticsEndpoint) return;
+
+  try {
+    const response = await fetch(diagnosticsEndpoint, { headers: { Accept: 'application/json' } });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const payload = await response.json();
+    renderDiagnostics(payload);
+  } catch (error) {
+    renderDiagnosticsError();
+    console.error(error);
+  }
+}
+
 function registerOverlayCanvasSync() {
   if (!videoImage || !overlayCanvas) return;
 
@@ -543,13 +626,16 @@ function registerOverlayCanvasSync() {
 
 renderEmptyState();
 registerOverlayCanvasSync();
+renderOverlayConnectionMode(overlayConnectionMode);
 loadRecentEvents();
 loadStatusSummary();
 loadOverlaySnapshot();
+loadDiagnostics();
 startOverlaySse();
 startOverlayStaleWatcher();
 window.setInterval(loadRecentEvents, 10000);
 window.setInterval(loadStatusSummary, 10000);
+window.setInterval(loadDiagnostics, diagnosticsPollMs);
 
 window.addEventListener('beforeunload', () => {
   stopOverlaySse();

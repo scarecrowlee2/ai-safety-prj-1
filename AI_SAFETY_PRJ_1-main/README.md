@@ -1,139 +1,86 @@
 # AI Smart Safety MVP (Official FastAPI App)
 
-이 디렉터리(`AI_SAFETY_PRJ_1-main/`)가 저장소의 **공식 실행/개발 루트**입니다.
+이 디렉터리(`AI_SAFETY_PRJ_1-main/`)가 현재 코드 기준 공식 실행 루트입니다.
 
 - 공식 앱 루트: `AI_SAFETY_PRJ_1-main/`
 - 공식 FastAPI 엔트리포인트: `app.main:app`
 - 개발 실행 명령: `uvicorn app.main:app --reload`
 
-> 저장소 바깥(outer) 레거시 앱 경로는 더 이상 공식 실행 경로가 아닙니다.
-
 ---
 
 ## 1) 빠른 시작
 
-아래 명령은 모두 `AI_SAFETY_PRJ_1-main/` 에서 실행합니다.
-
-### Python 가상환경 + 의존성
+아래 명령은 모두 `AI_SAFETY_PRJ_1-main/`에서 실행합니다.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate   # Windows: .\\.venv\\Scripts\\Activate.ps1
 pip install -r requirements.txt
+cp .env.example .env
+uvicorn app.main:app --reload
 ```
 
-선택(YOLO 사람 감지 게이트 사용 시):
+`ENABLE_YOLO_PERSON_GATE=true`로 운영할 경우(권장) optional 의존성도 설치하세요.
 
 ```bash
 pip install -r requirements-optional.txt
 ```
 
-### 환경 파일 준비
+## 2) 접속 경로(현재 코드 기준)
 
-```bash
-cp .env.example .env
-```
-
-### 모델 파일 준비 (fall detector)
-
-낙상 감지는 기본적으로 `./models/pose_landmarker.task` 파일을 사용합니다.
-
-- 기본 경로: `models/pose_landmarker.task`
-- 또는 `.env` 에서 `FALL_POSE_TASK_MODEL_PATH` 로 경로 지정
-
-모델 파일이 없으면 서버는 실행되지만, 낙상 감지는 비활성화되고 `/api/v1/health`의 `warnings`/`detectors`에 이유가 표시됩니다.
-
-### 런타임 디렉터리
-
-앱 시작 시 아래 경로들이 자동 생성됩니다.
-
-- `data/`
-- `data/snapshots/`
-- `data/uploads/`
-- `data/outbox/`
-- `data/realtime_events.jsonl` 의 상위 디렉터리
-- `data/events.db` 의 상위 디렉터리
-
----
-
-## 2) 개발 서버 실행
-
-```bash
-uvicorn app.main:app --reload
-```
-
-기본 접속 주소:
-
-- API docs: `http://127.0.0.1:8000/docs`
-- root: `http://127.0.0.1:8000/`
-
----
-
-## 3) 주요 기능 엔드포인트
-
-### Realtime 대시보드/스트림
-
-- Realtime dashboard: `GET /realtime`
-- Realtime video stream (MJPEG): `GET /realtime/video`
-- Realtime recent events API: `GET /api/v1/realtime/events?limit=6`
-
-### 업로드 분석 API
-
-- Health: `GET /api/v1/health`
-- Video analyze(upload): `POST /api/v1/analyze/video`
-  - form-data: `resident_id`(int), `video`(file), `notify`(optional bool)
+- API docs: `GET /docs`
+- Health/Diagnostics: `GET /api/v1/health`
+- Realtime 대시보드 UI: `GET /realtime`
+- Realtime 점검용 MJPEG 스트림: `GET /realtime/video`
+- Realtime 이벤트 목록 API: `GET /api/v1/realtime/events`
+- Realtime 상태 요약 API: `GET /api/v1/realtime/status`
+- 업로드 분석 API: `POST /api/v1/analyze/video`
 - Outbox 재전송: `POST /api/v1/retry-outbox`
 
----
+## 3) 기능 범위 구분 (업로드 vs 실시간)
 
-## 4) 실행 전/환경 체크 포인트
+### 업로드 분석기 (`POST /api/v1/analyze/video`)
 
-- 웹캠 realtime 사용 시 카메라 접근 가능해야 합니다.
-  - 실패 시 `/realtime/video`는 fallback 상태 프레임을 반환합니다.
-- `.env` 주요 변수
-  - `APP_TIMEZONE`, `DATA_DIR`, `MODELS_DIR`
-  - `FALL_ENABLED`, `FALL_POSE_TASK_MODEL_PATH`
-  - `ENABLE_YOLO_PERSON_GATE` (운영에서 inactive 핵심 기능 사용 시 `true` 권장)
-  - `YOLO_MODEL` (예: `yolov8n.pt`)
-  - `REALTIME_WEBCAM_SOURCE`, `REALTIME_WEBCAM_WIDTH`, `REALTIME_WEBCAM_HEIGHT`, `REALTIME_WEBCAM_FPS`
-  - `REALTIME_EVENT_LOG_PATH`, `REALTIME_RECENT_EVENT_LIMIT`
-  - `SPRING_BOOT_EVENT_URL` (외부 전송 연동 시)
+- 현재 지원 detector: `fall`, `inactive`
+- 현재 미지원 detector: `violence` (실시간 파이프라인 전용)
+- 요청 형식: `multipart/form-data`
+  - `resident_id` (int, 필수)
+  - `video` (file, 필수)
+  - `notify` (bool, 선택)
 
-### Inactive detector 운영 정책
+### 실시간 감지 (대시보드/스트림)
 
-- 운영 환경에서 inactive detector를 핵심 기능으로 사용할 경우 `ENABLE_YOLO_PERSON_GATE=true`를 권장합니다.
-- person gate가 비활성화(`false`)면 inactive detector는 제한(degraded) 모드로 동작합니다.
-- `ENABLE_YOLO_PERSON_GATE=true`인데 person gate(YOLO)가 준비되지 않으면 앱이 시작 단계에서 fail-fast 합니다.
-- 운영 점검 시 `GET /api/v1/health`의 `detectors.inactive`에서 아래를 확인하세요.
+- 대상 경로: `/realtime`, `/realtime/video`, `/api/v1/realtime/events`, `/api/v1/realtime/status`
+- 실시간 파이프라인 detector 범위: `fall`, `inactive`, `violence`
+
+## 4) Realtime 경로 역할
+
+- `/realtime`: 운영 대시보드 페이지(상태 배지, 이벤트 패널, 영상 패널)
+- `/realtime/video`: 대시보드가 소비하는 MJPEG 프레임 스트림(점검 시 직접 호출 가능)
+- `/api/v1/realtime/events`: 최근 이벤트 리스트(JSON) 조회
+- `/api/v1/realtime/status`: 최근 이벤트 기반 상태 요약(JSON, 예: `fall/inactive/violence/state`)
+
+## 5) Inactive detector 운영 주의사항
+
+- 운영에서 inactive를 신뢰성 있게 쓰려면 `ENABLE_YOLO_PERSON_GATE=true`를 권장합니다.
+- gate 비활성(`false`)이면 inactive detector가 `degraded`(제한 모드)로 동작할 수 있습니다.
+- `ENABLE_YOLO_PERSON_GATE=true`인데 YOLO person gate 준비가 실패하면 시작 시 fail-fast 될 수 있습니다.
+- 점검 시 `GET /api/v1/health`의 `detectors.inactive`에서 아래를 확인하세요.
+  - `mode` (`full` / `degraded` / `disabled` / `error`)
   - `person_gate_enabled`
   - `person_gate_backend`
   - `person_gate_ready`
-  - `mode` (`full`/`degraded`/`disabled`/`error`)
 
----
+## 6) Health/Diagnostics에서 확인할 수 있는 것
 
-## 5) Smoke Check (시작 후 빠른 검증)
+`GET /api/v1/health`는 현재 코드 기준으로 다음을 빠르게 확인하는 용도입니다.
 
-서버 실행 후 아래 순서로 최소 검증을 권장합니다.
+- 서비스 상태(`status`: `ok` 또는 `degraded`)
+- 업로드 분석 지원/미지원 detector 목록
+- detector별 상태(`detectors.fall`, `detectors.inactive`, `detectors.violence`)
+- 경고 목록(`warnings`)
 
-1. **앱 기동 확인**
-   - `GET /api/v1/health` 가 `200` 응답인지 확인
-2. **Realtime 페이지 로드 확인**
-   - 브라우저에서 `GET /realtime` 접속
-3. **Realtime 스트림 접근 확인**
-   - `GET /realtime/video` 호출 시 MJPEG 응답(`multipart/x-mixed-replace`) 확인
-4. **Recent events API 확인**
-   - `GET /api/v1/realtime/events` 가 JSON payload 반환하는지 확인
-5. **Upload 분석 API 확인**
-   - `POST /api/v1/analyze/video` 가 업로드 파일에 대해 JSON 결과를 반환하는지 확인
-6. **Outbox/retry 흐름 위치 확인**
-   - 실패 적재 파일: `data/outbox/events.jsonl`
-   - 재전송 엔드포인트: `POST /api/v1/retry-outbox`
+## 7) 참고
 
----
-
-## 6) Legacy 상태
-
-- `legacy/outer-realtime-app/` 은 문서 스텁(역사적 참고)이며 공식 실행 대상이 아닙니다.
-- `legacy/archived_realtime_reference/` 는 보관용 코드/에셋이며 실행 대상이 아닙니다.
-- 신규 개발/검증/실행은 반드시 `AI_SAFETY_PRJ_1-main/` 기준으로 진행하세요.
+- 웹캠 미연결/오류 환경에서는 `/realtime/video`가 실영상 대신 fallback 상태 프레임을 반환할 수 있습니다.
+- 레거시 실행 경로(`uvicorn app.api.stream:app`)는 현재 공식 경로가 아닙니다.

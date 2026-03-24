@@ -1,12 +1,11 @@
-# Realtime Detection Guide (Inner Official App)
+# Realtime Detection Guide (현재 코드 기준)
 
-이 문서는 `AI_SAFETY_PRJ_1-main/` 기준 realtime 기능 사용 가이드입니다.
+`AI_SAFETY_PRJ_1-main/`의 공식 realtime 사용 요약입니다.
 
-## 공식 실행 기준
+## 1) 실행 기준
 
-- 공식 루트: `AI_SAFETY_PRJ_1-main/`
 - 공식 엔트리포인트: `app.main:app`
-- 실행:
+- 실행 명령:
 
 ```bash
 uvicorn app.main:app --reload
@@ -14,23 +13,35 @@ uvicorn app.main:app --reload
 
 > `uvicorn app.api.stream:app` 는 현재 공식 실행 경로가 아닙니다.
 
-## Realtime 접근 경로
+## 2) 공식 realtime 경로와 역할
 
-- 대시보드: `GET /realtime`
-- 비디오 스트림(MJPEG): `GET /realtime/video`
-- 최근 이벤트 API: `GET /api/v1/realtime/events`
+- `GET /realtime`  
+  운영 대시보드 UI
+- `GET /realtime/video`  
+  대시보드가 사용하는 MJPEG 영상 스트림(점검 시 직접 호출 가능)
+- `GET /api/v1/realtime/events`  
+  최근 실시간 이벤트 목록(JSON)
+- `GET /api/v1/realtime/status`  
+  최근 이벤트 기반 상태 요약(JSON)
 
-## 로그/저장 위치
+## 3) 업로드 분석 API와 범위 차이
 
-- 실시간 이벤트 로그(JSONL): `data/realtime_events.jsonl`
-- 업로드 분석/공통 이벤트 저장: `data/events.db`
-- 실패 전송 outbox: `data/outbox/events.jsonl`
+- 업로드 분석 엔드포인트: `POST /api/v1/analyze/video`
+- 업로드 분석 detector 범위: `fall`, `inactive`
+- `violence`는 현재 realtime 전용 detector입니다.
 
-## 운영 확인 포인트
+즉, realtime detector 범위(`fall/inactive/violence`)와 upload analyzer 범위(`fall/inactive`)는 다릅니다.
 
-1. `/realtime` 페이지가 로드되는지 확인
-2. `/realtime/video` 응답이 `multipart/x-mixed-replace` 인지 확인
-3. `/api/v1/realtime/events` 응답이 JSON인지 확인
-4. 웹캠 미연결 환경에서는 스트림에서 fallback 상태 프레임이 나오는지 확인
+## 4) Inactive 운영 주의사항
 
-보다 넓은 개발/환경설정/업로드 API 내용은 `README.md`를 기준으로 확인하세요.
+- 운영에서는 `ENABLE_YOLO_PERSON_GATE=true` 권장을 기본으로 봅니다.
+- gate 비활성 시 inactive detector가 `degraded`(제한 모드) 상태가 될 수 있습니다.
+- 상태 확인: `GET /api/v1/health`의 `detectors.inactive.mode`, `person_gate_enabled`, `person_gate_ready`
+
+## 5) 최소 점검 체크리스트
+
+1. `/realtime` 로 대시보드 렌더링 확인
+2. `/realtime/video` 가 `multipart/x-mixed-replace`로 응답하는지 확인
+3. `/api/v1/realtime/events` JSON 확인
+4. `/api/v1/realtime/status` JSON 확인
+5. `/api/v1/health`에서 detector 상태/경고 확인

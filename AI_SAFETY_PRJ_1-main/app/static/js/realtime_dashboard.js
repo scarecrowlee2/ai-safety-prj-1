@@ -5,6 +5,10 @@ const eventsEndpoint = page?.dataset.eventsEndpoint;
 const statusEndpoint = buildStatusEndpoint(eventsEndpoint);
 const overlayEndpoint =
   page?.dataset.overlayEndpoint || document.querySelector('.video-frame')?.dataset.overlayEndpoint || null;
+const overlayStreamEndpoint =
+  page?.dataset.overlayStreamEndpoint ||
+  document.querySelector('.video-frame')?.dataset.overlayStreamEndpoint ||
+  null;
 const videoImage = document.querySelector('#realtime-video');
 const overlayCanvas = document.querySelector('#realtime-overlay');
 const overlayContext = overlayCanvas?.getContext('2d') || null;
@@ -17,6 +21,7 @@ const eventTypeLabel = {
 
 const statusTypes = ['fall', 'inactive', 'violence'];
 const overlayPollMs = 400;
+const overlaySseFallbackDelayMs = 4000;
 const defaultBoxCoordSystem = 'normalized_xyxy';
 const overlayColor = {
   normal: '#22c55e',
@@ -318,6 +323,103 @@ function renderOverlay(payload) {
   drawObjectBoxes(payload);
 }
 
+let overlayConnectionMode = 'polling';
+let overlayLastReceivedAt = 0;
+let overlayLastRenderedFrameId = null;
+let overlayPollTimerId = null;
+let overlayFallbackTimerId = null;
+let overlayEventSource = null;
+
+function consumeOverlayPayload(payload) {
+  if (!payload || typeof payload !== 'object') return;
+
+  const nextFrameId = payload.frame_id ?? null;
+  const hasSameFrameId =
+    nextFrameId !== null && nextFrameId !== undefined && overlayLastRenderedFrameId === nextFrameId;
+  if (hasSameFrameId) {
+    return;
+  }
+
+  overlayLastReceivedAt = Date.now();
+  overlayLastRenderedFrameId = nextFrameId;
+  renderOverlay(payload);
+}
+
+function stopOverlayPolling() {
+  if (overlayPollTimerId === null) return;
+  window.clearInterval(overlayPollTimerId);
+  overlayPollTimerId = null;
+}
+
+function startOverlayPolling() {
+  if (overlayPollTimerId !== null) return;
+  overlayConnectionMode = 'polling';
+  overlayPollTimerId = window.setInterval(loadOverlaySnapshot, overlayPollMs);
+}
+
+function stopOverlaySse() {
+  if (overlayEventSource) {
+    overlayEventSource.close();
+    overlayEventSource = null;
+  }
+  if (overlayFallbackTimerId !== null) {
+    window.clearTimeout(overlayFallbackTimerId);
+    overlayFallbackTimerId = null;
+  }
+}
+
+function fallbackToOverlayPolling() {
+  stopOverlaySse();
+  startOverlayPolling();
+}
+
+function onOverlaySseMessage(rawData) {
+  if (!rawData || typeof rawData !== 'string') return;
+  try {
+    const payload = JSON.parse(rawData);
+    consumeOverlayPayload(payload);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function startOverlaySse() {
+  if (!overlayStreamEndpoint || typeof EventSource !== 'function') {
+    startOverlayPolling();
+    return;
+  }
+
+  stopOverlayPolling();
+  overlayConnectionMode = 'sse';
+
+  try {
+    overlayEventSource = new EventSource(overlayStreamEndpoint);
+  } catch (error) {
+    console.error(error);
+    fallbackToOverlayPolling();
+    return;
+  }
+
+  if (overlayFallbackTimerId !== null) {
+    window.clearTimeout(overlayFallbackTimerId);
+  }
+  overlayFallbackTimerId = window.setTimeout(() => {
+    if (overlayConnectionMode !== 'sse') return;
+    if (overlayLastReceivedAt > 0) return;
+    fallbackToOverlayPolling();
+  }, overlaySseFallbackDelayMs);
+
+  overlayEventSource.addEventListener('overlay', (event) => {
+    onOverlaySseMessage(event.data);
+  });
+  overlayEventSource.addEventListener('message', (event) => {
+    onOverlaySseMessage(event.data);
+  });
+  overlayEventSource.onerror = () => {
+    fallbackToOverlayPolling();
+  };
+}
+
 async function loadRecentEvents() {
   if (!eventsEndpoint || !eventList || !refreshLabel) return;
 
@@ -380,12 +482,7 @@ async function loadOverlaySnapshot() {
     }
 
     const payload = await response.json();
-    if (!payload?.ready) {
-      clearOverlay();
-      return;
-    }
-
-    renderOverlay(payload);
+    consumeOverlayPayload(payload);
   } catch (error) {
     clearOverlay();
     console.error(error);
@@ -411,6 +508,11 @@ registerOverlayCanvasSync();
 loadRecentEvents();
 loadStatusSummary();
 loadOverlaySnapshot();
+startOverlaySse();
 window.setInterval(loadRecentEvents, 10000);
 window.setInterval(loadStatusSummary, 10000);
-window.setInterval(loadOverlaySnapshot, overlayPollMs);
+
+window.addEventListener('beforeunload', () => {
+  stopOverlaySse();
+  stopOverlayPolling();
+});

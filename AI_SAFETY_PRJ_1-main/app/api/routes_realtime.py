@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import suppress
+from datetime import UTC, datetime
 from pathlib import Path
 from string import Template
 from time import sleep
@@ -30,6 +31,8 @@ RECENT_EVENT_MAX_LIMIT = settings.realtime_recent_event_max_limit
 MJPEG_BOUNDARY = settings.realtime_mjpeg_boundary
 DEFAULT_CAMERA_WIDTH = settings.realtime_webcam_width
 DEFAULT_CAMERA_HEIGHT = settings.realtime_webcam_height
+STATUS_EVENT_TYPES = ("fall", "inactive", "violence")
+STATUS_EVENT_RECENCY_SECONDS = 60
 
 
 realtime_event_logger = EventLogger(str(REALTIME_EVENT_LOG_PATH))
@@ -89,6 +92,56 @@ def realtime_events(limit: int = RECENT_EVENT_LIMIT) -> dict[str, object]:
         "items": events,
         "log_path": str(REALTIME_EVENT_LOG_PATH),
     }
+
+
+@api_router.get("/status", response_class=JSONResponse)
+def realtime_status() -> dict[str, object]:
+    """Return a compact status summary for dashboard status badges."""
+
+    events = _load_recent_events(limit=RECENT_EVENT_MAX_LIMIT)
+    summary = _summarize_realtime_status(events)
+    return {
+        **summary,
+        "last_updated": datetime.now(UTC).isoformat(),
+    }
+
+
+def _summarize_realtime_status(events: list[dict[str, object]]) -> dict[str, str]:
+    now = datetime.now(UTC)
+    status_by_type = {event_type: "normal" for event_type in STATUS_EVENT_TYPES}
+
+    for event in events:
+        event_type = event.get("event_type")
+        if not isinstance(event_type, str) or event_type not in status_by_type:
+            continue
+
+        logged_at = event.get("logged_at")
+        parsed_at = _parse_logged_at(logged_at)
+        if parsed_at is None:
+            continue
+
+        event_age = (now - parsed_at).total_seconds()
+        if 0 <= event_age <= STATUS_EVENT_RECENCY_SECONDS:
+            status_by_type[event_type] = "warning"
+
+    status_by_type["state"] = "warning" if any(
+        status == "warning" for status in status_by_type.values()
+    ) else "normal"
+    return status_by_type
+
+
+def _parse_logged_at(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+
+    normalized = value.replace("Z", "+00:00")
+    with suppress(ValueError):
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
+
+    return None
 
 
 def _generate_webcam_stream(pipeline: RealtimePipeline | None = None):

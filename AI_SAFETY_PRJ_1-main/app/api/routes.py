@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
-from app.core.analyzer import VideoAnalyzer
+from app.core.analyzer import VideoAnalyzer, get_video_analyzer as _get_shared_video_analyzer
 from app.core.config import settings
 from app.notifier import EventNotifier
 from app.storage.event_store import EventStore
@@ -12,10 +12,14 @@ from app.storage.event_store import EventStore
 router = APIRouter(prefix="/api/v1", tags=["analyzer"])
 
 
+def get_video_analyzer() -> VideoAnalyzer:
+    return _get_shared_video_analyzer(factory=VideoAnalyzer)
+
+
 # 이 함수는 서비스 상태와 감지기 진단 정보를 반환합니다.
 @router.get("/health")
 def health() -> dict:
-    analyzer = VideoAnalyzer()
+    analyzer = get_video_analyzer()
     diagnostics = analyzer.diagnostics()
     inactive_mode = diagnostics.get("detectors", {}).get("inactive", {}).get("mode", "unknown")
     service_status = "ok"
@@ -43,7 +47,7 @@ async def analyze_video(
     upload_path.write_bytes(content)
 
     try:
-        analyzer = VideoAnalyzer()
+        analyzer = get_video_analyzer()
         result = analyzer.analyze_video(resident_id=resident_id, video_path=upload_path)
         if notify:
             notifier = EventNotifier(EventStore())

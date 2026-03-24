@@ -128,6 +128,12 @@ class FallDetector:
         self.hog = None
         self._last_video_timestamp_ms = None
 
+    # 이 메서드는 비디오 분석 세션 간 누적 상태를 초기화합니다.
+    def reset_runtime_state(self) -> None:
+        self.horizontal_streak_seconds = 0.0
+        self._previous_timestamp = None
+        self._last_video_timestamp_ms = None
+
     # 이 메서드는 감지기의 현재 활성화 상태와 사유를 반환합니다.
     def status(self) -> dict[str, Any]:
         return {

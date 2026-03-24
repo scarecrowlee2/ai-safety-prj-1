@@ -16,6 +16,11 @@ try:
 except Exception:  # pragma: no cover - optional runtime dependency
     mp = None
 
+try:
+    import cv2
+except Exception:  # pragma: no cover - optional runtime dependency
+    cv2 = None
+
 
 @dataclass(slots=True)
 class FallDecision:
@@ -30,8 +35,10 @@ class FallDetector:
     # 이 메서드는 클래스가 동작하는 데 필요한 초기 상태와 객체를 준비합니다.
     def __init__(self) -> None:
         self.landmarker = None
+        self.hog = None
         self.enabled = False
         self.disabled_reason = ""
+        self.backend = "none"
         self.horizontal_streak_seconds = 0.0
         self._previous_timestamp: float | None = None
         self.load_model()
@@ -44,18 +51,28 @@ class FallDetector:
             self._disable("fall detector disabled by configuration")
             return
 
+        if self._try_init_pose_backend():
+            return
+
+        if settings.fall_enable_hog_fallback and self._try_init_hog_backend():
+            return
+
+        if not self.disabled_reason:
+            self._disable("fall detector backend unavailable")
+
+    def _try_init_pose_backend(self) -> bool:
         if mp is None:
             self._disable("mediapipe package unavailable")
-            return
+            return False
 
         if not hasattr(mp, "tasks") or not hasattr(mp.tasks, "vision"):
             self._disable("mediapipe tasks api unavailable")
-            return
+            return False
 
         model_path = Path(settings.fall_pose_task_model_path)
         if not model_path.exists():
             self._disable(f"pose task model not found: {model_path}")
-            return
+            return False
 
         try:
             base_options = mp.tasks.BaseOptions(model_asset_path=str(model_path))
@@ -70,37 +87,61 @@ class FallDetector:
             )
             self.landmarker = mp.tasks.vision.PoseLandmarker.create_from_options(options)
             self.enabled = True
+            self.backend = "mediapipe_tasks"
             self.disabled_reason = ""
+            return True
         except Exception as exc:  # pragma: no cover - runtime/environment dependent
             self._disable(f"failed to initialize pose landmarker: {exc}")
+            return False
+
+    def _try_init_hog_backend(self) -> bool:
+        if cv2 is None:
+            self._disable(f"{self.disabled_reason}; opencv unavailable")
+            return False
+
+        try:
+            self.hog = cv2.HOGDescriptor()
+            self.hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+            self.enabled = True
+            self.backend = "hog_fallback"
+            self.disabled_reason = ""
+            return True
+        except Exception as exc:  # pragma: no cover - runtime/environment dependent
+            self._disable(f"{self.disabled_reason}; failed to initialize hog fallback: {exc}")
+            return False
 
     # 이 메서드는 감지기를 비활성화하고 사유를 기록합니다.
     def _disable(self, reason: str) -> None:
         self.enabled = False
         self.disabled_reason = reason
+        self.backend = "none"
         self.landmarker = None
+        self.hog = None
 
     # 이 메서드는 모델이나 리소스를 안전하게 정리합니다.
     def close(self) -> None:
         if self.landmarker is not None and hasattr(self.landmarker, "close"):
             self.landmarker.close()
         self.landmarker = None
+        self.hog = None
 
     # 이 메서드는 감지기의 현재 활성화 상태와 사유를 반환합니다.
     def status(self) -> dict[str, Any]:
         return {
             "enabled": self.enabled,
-            "backend": "mediapipe_tasks",
+            "backend": self.backend,
             "model_path": str(settings.fall_pose_task_model_path),
             "reason": self.disabled_reason,
+            "hog_fallback_enabled": settings.fall_enable_hog_fallback,
         }
 
     # 이 메서드는 프레임에서 사람의 핵심 좌표 정보를 추출합니다.
     def extract_keypoints(self, frame: np.ndarray, timestamp_ms: int) -> dict[str, Any] | None:
-        if self.landmarker is None or mp is None:
-            return None
+        if self.backend == "hog_fallback":
+            return self._extract_hog_detection(frame)
 
-        import cv2
+        if self.landmarker is None or mp is None or cv2 is None:
+            return None
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
@@ -130,6 +171,25 @@ class FallDetector:
             "image_size": (image_w, image_h),
         }
 
+    def _extract_hog_detection(self, frame: np.ndarray) -> dict[str, Any] | None:
+        if self.hog is None:
+            return None
+        rects, _weights = self.hog.detectMultiScale(
+            frame,
+            winStride=(8, 8),
+            padding=(8, 8),
+            scale=1.05,
+        )
+        if len(rects) == 0:
+            return None
+        rects = sorted(rects, key=lambda r: r[2] * r[3], reverse=True)
+        x, y, w, h = rects[0]
+        return {
+            "bbox": (int(x), int(y), int(w), int(h)),
+            "bbox_aspect_ratio": float(w / max(h, 1)),
+            "mean_visibility": 1.0,
+        }
+
     # 이 메서드는 특정 랜드마크 좌표를 이미지 기준 점으로 변환합니다.
     def _landmark_point(
         self,
@@ -146,6 +206,24 @@ class FallDetector:
 
     # 이 메서드는 추출된 자세 정보를 바탕으로 낙상 여부를 판정합니다.
     def is_fallen(self, keypoints: dict[str, Any] | None) -> FallDecision:
+        if self.backend == "hog_fallback":
+            return self._is_fallen_hog(keypoints)
+        return self._is_fallen_pose(keypoints)
+
+    def _is_fallen_hog(self, keypoints: dict[str, Any] | None) -> FallDecision:
+        if not keypoints:
+            return FallDecision(False, 0.0, None, None)
+
+        aspect_ratio = float(keypoints["bbox_aspect_ratio"])
+        is_candidate = aspect_ratio >= settings.fall_hog_aspect_ratio_threshold
+        return FallDecision(
+            is_candidate=is_candidate,
+            pose_confidence=1.0,
+            torso_angle_from_vertical_deg=None,
+            bbox_aspect_ratio=aspect_ratio,
+        )
+
+    def _is_fallen_pose(self, keypoints: dict[str, Any] | None) -> FallDecision:
         if not keypoints:
             return FallDecision(False, 0.0, None, None)
 
@@ -219,6 +297,8 @@ class FallDetector:
         )
         if not self.enabled and self.disabled_reason:
             metrics.notes["fall_detector"] = self.disabled_reason
+        if self.backend == "hog_fallback":
+            metrics.notes["fall_backend"] = "hog_fallback"
         return metrics
 
     # 이 메서드는 현재 감지 결과를 실제 이벤트로 발생시킬지 결정합니다.

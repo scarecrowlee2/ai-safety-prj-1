@@ -87,7 +87,13 @@ class RealtimePipeline:
             inactive_detected=inactive_result.detected,
             violence_detected=violence_result.detected,
         )
-        self._log_new_alerts(fall=fall, inactive=inactive, violence=violence, states=states, timestamp_sec=timestamp_sec)
+        new_logged_events = self._log_new_alerts(
+            fall=fall,
+            inactive=inactive,
+            violence=violence,
+            states=states,
+            timestamp_sec=timestamp_sec,
+        )
 
         self._draw_overlay(
             overlay=overlay,
@@ -102,6 +108,7 @@ class RealtimePipeline:
             "timestamp_sec": timestamp_sec,
             "states": states,
             "events": self._event_metadata(states),
+            "new_logged_events": new_logged_events,
             "detections": {
                 "fall": fall_result.to_dict(),
                 "inactive": inactive_result.to_dict(),
@@ -241,23 +248,31 @@ class RealtimePipeline:
         violence: ViolenceDecision,
         states: dict[str, bool],
         timestamp_sec: float,
-    ) -> None:
+    ) -> list[dict[str, Any]]:
         current = {
             "fall": states["fall_alert"],
             "inactive": states["inactive_alert"],
             "violence": states["violence_alert"],
         }
+        new_logged_events: list[dict[str, Any]] = []
 
         if current["fall"] and not self.last_alert_state["fall"]:
-            self.event_logger.log("fall", fall, "낙상/기절 의심 이벤트가 새로 감지되었습니다.", timestamp_sec)
+            new_logged_events.append(
+                self.event_logger.log("fall", fall, "낙상/기절 의심 이벤트가 새로 감지되었습니다.", timestamp_sec)
+            )
 
         if current["inactive"] and not self.last_alert_state["inactive"]:
-            self.event_logger.log("inactive", inactive, "무응답 의심 이벤트가 새로 감지되었습니다.", timestamp_sec)
+            new_logged_events.append(
+                self.event_logger.log("inactive", inactive, "무응답 의심 이벤트가 새로 감지되었습니다.", timestamp_sec)
+            )
 
         if current["violence"] and not self.last_alert_state["violence"]:
-            self.event_logger.log("violence", violence, "폭행 의심 이벤트가 새로 감지되었습니다.", timestamp_sec)
+            new_logged_events.append(
+                self.event_logger.log("violence", violence, "폭행 의심 이벤트가 새로 감지되었습니다.", timestamp_sec)
+            )
 
         self.last_alert_state = current
+        return new_logged_events
 
     def _event_metadata(self, states: dict[str, bool]) -> list[dict[str, str]]:
         events: list[dict[str, str]] = []

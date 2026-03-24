@@ -200,6 +200,7 @@ h2 {
 }
 
 .video-frame {
+  position: relative;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -212,13 +213,27 @@ h2 {
   max-height: min(68vh, 760px);
 }
 
-.video-frame img {
+
+.video-layer-stack {
+  position: relative;
+  width: 100%;
+}
+
+.video-layer-stack img {
   display: block;
   width: 100%;
   height: auto;
   max-height: min(68vh, 760px);
   object-fit: contain;
   background: #000;
+}
+
+.video-layer-stack canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
 .stream-footnote {
@@ -414,7 +429,7 @@ code {
     max-height: 54vh;
   }
 
-  .video-frame img {
+  .video-layer-stack img {
     max-height: 54vh;
   }
 }

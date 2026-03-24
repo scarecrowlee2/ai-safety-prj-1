@@ -50,8 +50,11 @@
             </div>
             <span class="panel-chip">Live MJPEG / $video_path</span>
           </div>
-          <div class="video-frame">
-            <img src="$video_path" alt="실시간 AI 안전 모니터링 영상" />
+          <div class="video-frame" data-overlay-endpoint="$overlay_path">
+            <div class="video-layer-stack">
+              <img id="realtime-video" src="$video_path" alt="실시간 AI 안전 모니터링 영상" />
+              <canvas id="realtime-overlay" aria-hidden="true"></canvas>
+            </div>
           </div>
           <div class="stream-footnote">
             <span class="dot"></span>

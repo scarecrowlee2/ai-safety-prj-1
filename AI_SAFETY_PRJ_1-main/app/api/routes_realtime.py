@@ -11,9 +11,12 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from app.core.realtime_pipeline import RealtimePipeline
+from app.core.realtime_notifier_policy import RealtimeNotifierIntegration
 from app.core.config import settings
 from app.storage.event_logger import EventLogger
 from app.storage.realtime_event_store import RealtimeEventStore
+from app.notifier import EventNotifier
+from app.storage.event_store import EventStore
 from app.core.webcam_reader import WebcamConfig, WebcamOpenError, WebcamReader
 
 router = APIRouter(tags=["realtime"])
@@ -32,6 +35,7 @@ DEFAULT_CAMERA_HEIGHT = settings.realtime_webcam_height
 realtime_event_logger = EventLogger(str(REALTIME_EVENT_LOG_PATH))
 realtime_event_store = RealtimeEventStore(feed=realtime_event_logger.store.feed)
 realtime_pipeline = RealtimePipeline(event_logger=realtime_event_logger)
+realtime_notifier = RealtimeNotifierIntegration(notifier=EventNotifier(EventStore()))
 
 
 def _load_recent_events(limit: int = RECENT_EVENT_LIMIT) -> list[dict[str, object]]:
@@ -100,6 +104,9 @@ def _generate_webcam_stream():
         for frame_index, webcam_frame in enumerate(reader.frames()):
             timestamp_sec = getattr(webcam_frame, "timestamp_sec", stream_started_at + (frame_index * frame_delay))
             result = realtime_pipeline.process_frame(webcam_frame.image, float(timestamp_sec))
+            new_logged_events = result.metadata.get("new_logged_events")
+            if isinstance(new_logged_events, list):
+                realtime_notifier.notify_logged_events(new_logged_events)
             yield _mjpeg_chunk(_encode_jpeg(result.frame))
             sleep(frame_delay)
     finally:

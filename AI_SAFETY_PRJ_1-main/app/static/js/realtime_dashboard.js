@@ -9,6 +9,11 @@ const eventTypeLabel = {
   violence: '폭행',
 };
 
+const statusTypes = ['fall', 'inactive', 'violence'];
+const EVENT_RECENCY_MS = 60 * 1000;
+
+let hasSuccessfulLoad = false;
+
 function formatLoggedAt(value) {
   if (!value) return '시간 정보 없음';
   const date = new Date(value);
@@ -18,6 +23,68 @@ function formatLoggedAt(value) {
     dateStyle: 'short',
     timeStyle: 'medium',
   }).format(date);
+}
+
+function parseEventTimeMs(event) {
+  if (!event || !event.logged_at) return null;
+
+  const parsedMs = new Date(event.logged_at).getTime();
+  if (!Number.isNaN(parsedMs)) {
+    return parsedMs;
+  }
+
+  return null;
+}
+
+function applyStatusVisual(badgeEl, textEl, state) {
+  if (!badgeEl || !textEl) return;
+
+  badgeEl.classList.remove('normal', 'warning', 'error');
+
+  if (state === 'warning') {
+    badgeEl.classList.add('warning');
+    badgeEl.style.background = 'rgba(245, 158, 11, 0.2)';
+    badgeEl.style.border = '1px solid rgba(245, 158, 11, 0.35)';
+    badgeEl.style.color = '#fcd34d';
+    textEl.textContent = '경고';
+    return;
+  }
+
+  if (state === 'error') {
+    badgeEl.classList.add('error');
+    badgeEl.style.background = 'rgba(239, 68, 68, 0.18)';
+    badgeEl.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+    badgeEl.style.color = '#fca5a5';
+    textEl.textContent = '오류';
+    return;
+  }
+
+  badgeEl.classList.add('normal');
+  badgeEl.style.background = '';
+  badgeEl.style.border = '';
+  badgeEl.style.color = '';
+  textEl.textContent = '정상';
+}
+
+function setStatusBadge(type, state) {
+  const badgeEl = document.querySelector(`#status-badge-${type}`);
+  const textEl = document.querySelector(`#status-text-${type}`);
+  applyStatusVisual(badgeEl, textEl, state);
+}
+
+function updateStatusFromEvents(events) {
+  const nowMs = Date.now();
+
+  statusTypes.forEach((type) => {
+    const hasRecentEvent = events.some((event) => {
+      if (event?.event_type !== type) return false;
+      const eventTimeMs = parseEventTimeMs(event);
+      if (!eventTimeMs) return false;
+      return nowMs - eventTimeMs <= EVENT_RECENCY_MS;
+    });
+
+    setStatusBadge(type, hasRecentEvent ? 'warning' : 'normal');
+  });
 }
 
 function renderEmptyState() {
@@ -70,13 +137,22 @@ async function loadRecentEvents() {
     }
 
     const payload = await response.json();
-    renderEvents(payload.events || payload.items || []);
+    const events = payload.events || payload.items || [];
+
+    renderEvents(events);
+    updateStatusFromEvents(events);
+    hasSuccessfulLoad = true;
+
     refreshLabel.textContent = `최근 갱신 ${new Intl.DateTimeFormat('ko-KR', {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
     }).format(new Date())}`;
   } catch (error) {
+    if (!hasSuccessfulLoad) {
+      statusTypes.forEach((type) => setStatusBadge(type, 'error'));
+    }
+
     refreshLabel.textContent = '이벤트 목록을 불러오지 못했습니다';
     eventList.innerHTML = `
       <div class="event-empty">

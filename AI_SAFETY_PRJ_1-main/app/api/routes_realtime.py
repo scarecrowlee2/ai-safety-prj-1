@@ -76,6 +76,7 @@ def realtime_dashboard() -> HTMLResponse:
         video_path="/realtime/video",
         events_path="/api/v1/realtime/events",
         overlay_path="/api/v1/realtime/overlay/latest",
+        overlay_stream_path="/api/v1/realtime/overlay/stream",
         diagnostics_path="/api/v1/realtime/diagnostics",
     )
     return HTMLResponse(html)

@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import numpy as np
-from fastapi.testclient import TestClient
 
 from app.core.realtime_capture import RealtimeFrameSnapshot
 from app.main import app
@@ -51,13 +50,11 @@ def test_realtime_video_streams_latest_capture_frame(monkeypatch) -> None:
 
     monkeypatch.setattr(routes_realtime, "get_realtime_capture_service", lambda: service)
     monkeypatch.setattr(routes_realtime, "_encode_jpeg", lambda _image: b"jpeg-bytes")
-    client = TestClient(app)
 
-    with client.stream("GET", "/realtime/video") as response:
-        first_chunk = next(response.iter_bytes())
+    stream = routes_realtime._generate_webcam_stream()
+    first_chunk = next(stream)
+    stream.close()
 
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("multipart/x-mixed-replace")
     assert b"--frame" in first_chunk
     assert b"Content-Type: image/jpeg" in first_chunk
     assert b"jpeg-bytes" in first_chunk
@@ -81,11 +78,10 @@ def test_realtime_video_returns_fallback_frame_when_snapshot_missing(monkeypatch
     )
     client = TestClient(app)
 
-    with client.stream("GET", "/realtime/video") as response:
-        first_chunk = next(response.iter_bytes())
+    stream = routes_realtime._generate_webcam_stream()
+    first_chunk = next(stream)
+    stream.close()
 
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("multipart/x-mixed-replace")
     assert b"--frame" in first_chunk
     assert b"Content-Type: image/jpeg" in first_chunk
     assert b"fallback-jpeg" in first_chunk

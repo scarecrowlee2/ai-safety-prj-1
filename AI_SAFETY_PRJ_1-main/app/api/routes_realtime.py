@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import suppress
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from string import Template
 from time import sleep
@@ -38,12 +38,14 @@ STATUS_EVENT_RECENCY_SECONDS = 60
 
 realtime_event_logger = EventLogger(str(REALTIME_EVENT_LOG_PATH))
 realtime_event_store = RealtimeEventStore(feed=realtime_event_logger.store.feed)
-realtime_pipeline = RealtimePipeline(event_logger=realtime_event_logger)
 realtime_notifier = RealtimeNotifierIntegration(notifier=EventNotifier(EventStore()))
 
 
-def get_realtime_pipeline() -> RealtimePipeline:
-    return realtime_pipeline
+
+def get_realtime_capture_service() -> RealtimeCaptureService:
+    """Return the app-wide realtime capture service singleton."""
+
+    return get_global_realtime_capture_service()
 
 
 def get_realtime_capture_service() -> RealtimeCaptureService:
@@ -109,12 +111,12 @@ def realtime_status() -> dict[str, object]:
     summary = _summarize_realtime_status(events)
     return {
         **summary,
-        "last_updated": datetime.now(UTC).isoformat(),
+        "last_updated": datetime.now(timezone.utc).isoformat(),
     }
 
 
 def _summarize_realtime_status(events: list[dict[str, object]]) -> dict[str, str]:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     status_by_type = {event_type: "normal" for event_type in STATUS_EVENT_TYPES}
 
     for event in events:
@@ -145,8 +147,8 @@ def _parse_logged_at(value: object) -> datetime | None:
     with suppress(ValueError):
         parsed = datetime.fromisoformat(normalized)
         if parsed.tzinfo is None:
-            return parsed.replace(tzinfo=UTC)
-        return parsed.astimezone(UTC)
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
 
     return None
 

@@ -1,42 +1,36 @@
-# REALTIME DETECTION GUIDE
+# Realtime Detection Guide (Inner Official App)
 
-## 이번 버전에서 추가된 것
+이 문서는 `AI_SAFETY_PRJ_1-main/` 기준 realtime 기능 사용 가이드입니다.
 
-### 1) 더 선명한 화면 경고
-- 낙상/기절: 주시 상태는 노랑, 실제 경고는 빨강
-- 무응답: 주시 상태는 하늘색 계열, 실제 경고는 주황
-- 폭행 의심: 주시 상태는 보라, 실제 경고는 진한 자홍
+## 공식 실행 기준
 
-화면 상단 상태 패널과 각 사람 박스 색을 다르게 표시해서 어떤 이벤트가 걸렸는지 바로 보이게 했습니다.
-
-### 2) 이벤트 로그 저장
-- 로그 파일 경로: `data/realtime_events.jsonl`
-- 형식: JSON Lines
-- 새 경고가 처음 발생하는 순간만 1줄씩 기록
-
-예시:
-```json
-{"logged_at":"2026-03-23T01:23:45.000000+00:00","event_type":"fall","message":"낙상/기절 의심 이벤트가 새로 감지되었습니다.","stream_timestamp_sec":12.34,"payload":{"is_candidate":true,"should_alert":true}}
-```
-
-## 실행
+- 공식 루트: `AI_SAFETY_PRJ_1-main/`
+- 공식 엔트리포인트: `app.main:app`
+- 실행:
 
 ```bash
-pip install fastapi uvicorn opencv-python numpy
-uvicorn app.api.stream:app --reload
+uvicorn app.main:app --reload
 ```
 
-브라우저:
-```text
-http://127.0.0.1:8000/
-```
+> `uvicorn app.api.stream:app` 는 현재 공식 실행 경로가 아닙니다.
 
-## 로그 확인
+## Realtime 접근 경로
 
-스트리밍을 켠 뒤 감지가 발생하면 아래 파일이 생깁니다.
+- 대시보드: `GET /realtime`
+- 비디오 스트림(MJPEG): `GET /realtime/video`
+- 최근 이벤트 API: `GET /api/v1/realtime/events`
 
-```text
-data/realtime_events.jsonl
-```
+## 로그/저장 위치
 
-파일을 메모장이나 VSCode로 열면 감지 시점별 기록을 확인할 수 있습니다.
+- 실시간 이벤트 로그(JSONL): `data/realtime_events.jsonl`
+- 업로드 분석/공통 이벤트 저장: `data/events.db`
+- 실패 전송 outbox: `data/outbox/events.jsonl`
+
+## 운영 확인 포인트
+
+1. `/realtime` 페이지가 로드되는지 확인
+2. `/realtime/video` 응답이 `multipart/x-mixed-replace` 인지 확인
+3. `/api/v1/realtime/events` 응답이 JSON인지 확인
+4. 웹캠 미연결 환경에서는 스트림에서 fallback 상태 프레임이 나오는지 확인
+
+보다 넓은 개발/환경설정/업로드 API 내용은 `README.md`를 기준으로 확인하세요.

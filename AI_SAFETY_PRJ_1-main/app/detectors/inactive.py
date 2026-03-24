@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from threading import Lock
 from typing import Any
 
 import numpy as np
@@ -25,6 +26,11 @@ class InactiveDecision:
 
 
 class InactiveDetector:
+    _person_gate_lock = Lock()
+    _person_gate_model_name: str | None = None
+    _person_gate_instance: Any = None
+    _person_gate_init_error: RuntimeError | None = None
+
     # 이 메서드는 클래스가 동작하는 데 필요한 초기 상태와 객체를 준비합니다.
     def __init__(self) -> None:
         self.background_subtractor = None
@@ -59,19 +65,10 @@ class InactiveDetector:
         self.mode = self._resolve_mode()
 
     def _initialize_required_person_gate(self) -> None:
-        if YOLO is None:
-            self.person_gate_ready = False
-            self.mode = self._resolve_mode()
-            self.disabled_reason = "person gate required but ultralytics is unavailable"
-            raise RuntimeError(
-                "ENABLE_YOLO_PERSON_GATE=true but ultralytics is unavailable. "
-                "Install optional dependencies and verify YOLO runtime."
-            )
-
         try:
-            self._yolo = YOLO(settings.yolo_model)
+            self._yolo = self._get_or_initialize_required_person_gate()
             self.person_gate_ready = True
-        except Exception as exc:  # pragma: no cover - runtime/environment dependent
+        except RuntimeError as exc:
             self._yolo = None
             self.person_gate_ready = False
             self.mode = self._resolve_mode()
@@ -79,10 +76,44 @@ class InactiveDetector:
                 "person gate required but YOLO initialization failed: "
                 f"{exc}"
             )
-            raise RuntimeError(
-                "ENABLE_YOLO_PERSON_GATE=true but YOLO person gate failed to initialize "
-                f"(model={settings.yolo_model}): {exc}"
-            ) from exc
+            raise
+
+    @classmethod
+    def _get_or_initialize_required_person_gate(cls) -> Any:
+        model_name = settings.yolo_model
+        with cls._person_gate_lock:
+            if cls._person_gate_model_name == model_name:
+                if cls._person_gate_init_error is not None:
+                    raise cls._person_gate_init_error
+                if cls._person_gate_instance is not None:
+                    return cls._person_gate_instance
+
+            if YOLO is None:
+                error = RuntimeError(
+                    "ENABLE_YOLO_PERSON_GATE=true but ultralytics is unavailable. "
+                    "Install optional dependencies and verify YOLO runtime."
+                )
+                cls._person_gate_model_name = model_name
+                cls._person_gate_instance = None
+                cls._person_gate_init_error = error
+                raise error
+
+            try:
+                yolo = YOLO(model_name)
+            except Exception as exc:  # pragma: no cover - runtime/environment dependent
+                error = RuntimeError(
+                    "ENABLE_YOLO_PERSON_GATE=true but YOLO person gate failed to initialize "
+                    f"(model={model_name}): {exc}"
+                )
+                cls._person_gate_model_name = model_name
+                cls._person_gate_instance = None
+                cls._person_gate_init_error = error
+                raise error from exc
+
+            cls._person_gate_model_name = model_name
+            cls._person_gate_instance = yolo
+            cls._person_gate_init_error = None
+            return yolo
 
     def _resolve_mode(self) -> str:
         if not self.enabled:

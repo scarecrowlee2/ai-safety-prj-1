@@ -10,6 +10,7 @@ from app.detectors.contracts import DetectorInput, OverlayAnnotation
 from app.detectors.fall import FallDecision, FallDetector
 from app.detectors.inactive import InactiveDecision, InactiveDetector
 from app.detectors.violence import ViolenceDecision, ViolenceDetector
+from app.core.config import settings
 from app.storage.event_logger import EventLogger
 
 
@@ -26,13 +27,18 @@ class RealtimePipeline:
 
     def __init__(
         self,
-        event_log_path: str = "data/realtime_events.jsonl",
+        event_log_path: str | None = None,
         event_logger: EventLogger | None = None,
     ) -> None:
         self.fall_detector = FallDetector()
         self.inactive_detector = InactiveDetector()
-        self.violence_detector = ViolenceDetector()
-        self.event_logger = event_logger or EventLogger(event_log_path)
+        self.violence_detector = ViolenceDetector(
+            motion_threshold=settings.realtime_violence_motion_threshold,
+            pair_distance_threshold=settings.realtime_violence_pair_distance_threshold,
+            hold_seconds=settings.realtime_violence_hold_seconds,
+        )
+        resolved_log_path = event_log_path or str(settings.realtime_event_log_path)
+        self.event_logger = event_logger or EventLogger(resolved_log_path)
 
         self.last_alert_state = {"fall": False, "inactive": False, "violence": False}
         self._cv2 = None

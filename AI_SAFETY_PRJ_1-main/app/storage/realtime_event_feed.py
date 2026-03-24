@@ -7,12 +7,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from app.core.config import settings
+
 
 class RealtimeEventFeed:
     """Lightweight JSONL-backed store for recent realtime dashboard events."""
 
-    def __init__(self, log_path: str = "data/realtime_events.jsonl") -> None:
-        self.log_path = Path(log_path)
+    def __init__(self, log_path: str | Path | None = None) -> None:
+        self.log_path = Path(log_path) if log_path is not None else settings.realtime_event_log_path
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
     def record_event(
@@ -93,7 +95,7 @@ class RealtimeEventFeed:
 class EventLogger:
     """Backward-compatible logger wrapper used by realtime processing."""
 
-    def __init__(self, log_path: str = "data/realtime_events.jsonl") -> None:
+    def __init__(self, log_path: str | Path | None = None) -> None:
         self.feed = RealtimeEventFeed(log_path)
 
     def log(self, event_type: str, payload: Any, message: str, timestamp_sec: float | None = None) -> dict[str, Any]:

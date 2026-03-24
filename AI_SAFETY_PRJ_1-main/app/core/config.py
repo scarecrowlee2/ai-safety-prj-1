@@ -30,6 +30,22 @@ class Settings:
     retry_backoff_seconds: float = float(os.getenv("RETRY_BACKOFF_SECONDS", "1.5"))
 
     sample_fps: float = float(os.getenv("SAMPLE_FPS", "5.0"))
+    realtime_event_log_path: Path = Path(os.getenv("REALTIME_EVENT_LOG_PATH", "./data/realtime_events.jsonl")).expanduser()
+    realtime_recent_event_limit: int = int(os.getenv("REALTIME_RECENT_EVENT_LIMIT", "6"))
+    realtime_recent_event_max_limit: int = int(os.getenv("REALTIME_RECENT_EVENT_MAX_LIMIT", "20"))
+    realtime_mjpeg_boundary: str = os.getenv("REALTIME_MJPEG_BOUNDARY", "frame").strip() or "frame"
+    realtime_webcam_source: str = os.getenv("REALTIME_WEBCAM_SOURCE", "0").strip()
+    realtime_webcam_width: int = int(os.getenv("REALTIME_WEBCAM_WIDTH", "960"))
+    realtime_webcam_height: int = int(os.getenv("REALTIME_WEBCAM_HEIGHT", "540"))
+    realtime_webcam_fps: float = float(os.getenv("REALTIME_WEBCAM_FPS", "15.0"))
+    realtime_webcam_backend: int | None = (
+        int(os.getenv("REALTIME_WEBCAM_BACKEND", "").strip())
+        if os.getenv("REALTIME_WEBCAM_BACKEND", "").strip()
+        else None
+    )
+    realtime_violence_motion_threshold: float = float(os.getenv("REALTIME_VIOLENCE_MOTION_THRESHOLD", "0.025"))
+    realtime_violence_pair_distance_threshold: float = float(os.getenv("REALTIME_VIOLENCE_PAIR_DISTANCE_THRESHOLD", "220.0"))
+    realtime_violence_hold_seconds: float = float(os.getenv("REALTIME_VIOLENCE_HOLD_SECONDS", "2.0"))
 
     fall_enabled: bool = os.getenv("FALL_ENABLED", "true").lower() == "true"
     fall_pose_task_model_path: Path = Path(
@@ -60,6 +76,7 @@ class Settings:
         self.temp_upload_dir.mkdir(parents=True, exist_ok=True)
         self.outbox_jsonl.parent.mkdir(parents=True, exist_ok=True)
         self.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+        self.realtime_event_log_path.parent.mkdir(parents=True, exist_ok=True)
 
 
 settings = Settings()

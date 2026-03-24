@@ -13,6 +13,19 @@ from app.storage.event_store import EventStore
 
 router = APIRouter(prefix="/api/v1", tags=["analyzer"])
 MIN_UPLOAD_CHUNK_SIZE = 64 * 1024
+MAX_UPLOAD_STEM_LENGTH = 80
+
+
+def _build_upload_path(resident_id: int, original_filename: str | None) -> Path:
+    source_name = Path(original_filename or "upload.mp4").name
+    source_path = Path(source_name)
+    suffix = source_path.suffix or ".mp4"
+    raw_stem = source_path.stem or "upload"
+    safe_stem = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in raw_stem).strip("_") or "upload"
+    trimmed_stem = safe_stem[:MAX_UPLOAD_STEM_LENGTH]
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    unique_token = uuid4().hex[:12]
+    return settings.temp_upload_dir / f"resident_{resident_id}_{timestamp}_{unique_token}_{trimmed_stem}{suffix}"
 
 
 def get_video_analyzer() -> VideoAnalyzer:
@@ -43,11 +56,7 @@ async def analyze_video(
     video: UploadFile = File(...),
     notify: bool = Form(False),
 ) -> dict:
-    suffix = Path(video.filename or "upload.mp4").suffix or ".mp4"
-    filename_stem = Path(video.filename or "upload").stem or "upload"
-    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-    unique_token = uuid4().hex[:8]
-    upload_path = settings.temp_upload_dir / f"resident_{resident_id}_{timestamp}_{unique_token}_{filename_stem}{suffix}"
+    upload_path = _build_upload_path(resident_id=resident_id, original_filename=video.filename)
     chunk_size = max(settings.upload_write_chunk_size, MIN_UPLOAD_CHUNK_SIZE)
 
     try:

@@ -17,6 +17,7 @@
       class="monitor-page"
       data-events-endpoint="$events_path?limit=$recent_event_count"
       data-overlay-endpoint="$overlay_path"
+      data-overlay-stream-endpoint="/api/v1/realtime/overlay/stream"
     >
       <header class="hero-card panel">
         <div>
@@ -50,7 +51,11 @@
             </div>
             <span class="panel-chip">Live MJPEG / $video_path</span>
           </div>
-          <div class="video-frame" data-overlay-endpoint="$overlay_path">
+          <div
+            class="video-frame"
+            data-overlay-endpoint="$overlay_path"
+            data-overlay-stream-endpoint="/api/v1/realtime/overlay/stream"
+          >
             <div class="video-layer-stack">
               <img id="realtime-video" src="$video_path" alt="실시간 AI 안전 모니터링 영상" />
               <canvas id="realtime-overlay" aria-hidden="true"></canvas>

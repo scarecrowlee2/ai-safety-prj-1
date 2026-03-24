@@ -192,7 +192,13 @@ class FallDetector:
         return timestamp_ms
 
     def _extract_hog_detection(self, frame: np.ndarray) -> dict[str, Any] | None:
-        if self.hog is None:
+        # HOG detectMultiScale can raise/crash on invalid or too-small frames, so guard early.
+        if frame is None or self.hog is None:
+            return None
+        if not isinstance(frame, np.ndarray) or frame.ndim < 2:
+            return None
+        image_h, image_w = frame.shape[:2]
+        if image_w < 64 or image_h < 128:
             return None
         rects, _weights = self.hog.detectMultiScale(
             frame,

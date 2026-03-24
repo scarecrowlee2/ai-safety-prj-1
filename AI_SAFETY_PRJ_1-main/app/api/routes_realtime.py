@@ -38,6 +38,10 @@ realtime_pipeline = RealtimePipeline(event_logger=realtime_event_logger)
 realtime_notifier = RealtimeNotifierIntegration(notifier=EventNotifier(EventStore()))
 
 
+def get_realtime_pipeline() -> RealtimePipeline:
+    return realtime_pipeline
+
+
 def _load_recent_events(limit: int = RECENT_EVENT_LIMIT) -> list[dict[str, object]]:
     """Read recent realtime dashboard events from the event-store feed path."""
 
@@ -87,7 +91,8 @@ def realtime_events(limit: int = RECENT_EVENT_LIMIT) -> dict[str, object]:
     }
 
 
-def _generate_webcam_stream():
+def _generate_webcam_stream(pipeline: RealtimePipeline | None = None):
+    active_pipeline = pipeline or get_realtime_pipeline()
     reader = WebcamReader(_webcam_config_from_env())
 
     try:
@@ -103,7 +108,7 @@ def _generate_webcam_stream():
         stream_started_at = 0.0
         for frame_index, webcam_frame in enumerate(reader.frames()):
             timestamp_sec = getattr(webcam_frame, "timestamp_sec", stream_started_at + (frame_index * frame_delay))
-            result = realtime_pipeline.process_frame(webcam_frame.image, float(timestamp_sec))
+            result = active_pipeline.process_frame(webcam_frame.image, float(timestamp_sec))
             new_logged_events = result.metadata.get("new_logged_events")
             if isinstance(new_logged_events, list):
                 realtime_notifier.notify_logged_events(new_logged_events)

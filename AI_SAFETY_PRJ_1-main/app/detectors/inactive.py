@@ -117,17 +117,26 @@ class InactiveDetector:
 
     # 이 메서드는 움직임이 거의 없는 시간을 누적합니다.
     def accumulate_no_motion(self, timestamp_sec: float, motion_ratio: float, person_present: bool) -> float:
+        # 사람 없음: 비활동 누적 자체를 중지하고 즉시 리셋한다.
+        if not person_present:
+            self.no_motion_seconds = 0.0
+            self._previous_timestamp = timestamp_sec
+            return self.no_motion_seconds
+
+        # 사람은 있으나 움직임이 충분한 경우: 비활동 누적을 리셋한다.
+        if motion_ratio >= settings.motion_threshold:
+            self.no_motion_seconds = 0.0
+            self._previous_timestamp = timestamp_sec
+            return self.no_motion_seconds
+
+        # 사람 있음 + 정지 상태일 때만 delta를 누적한다.
         if self._previous_timestamp is None:
             delta = 0.0
         else:
             delta = max(timestamp_sec - self._previous_timestamp, 0.0)
+
+        self.no_motion_seconds += delta
         self._previous_timestamp = timestamp_sec
-
-        if person_present and motion_ratio < settings.motion_threshold:
-            self.no_motion_seconds += delta
-        else:
-            self.no_motion_seconds = 0.0
-
         return self.no_motion_seconds
 
     # 이 메서드는 하루 기준의 평균 움직임 점수를 계산합니다.

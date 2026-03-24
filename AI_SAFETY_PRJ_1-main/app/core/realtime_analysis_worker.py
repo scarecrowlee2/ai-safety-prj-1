@@ -7,7 +7,7 @@ executes ``RealtimePipeline.analyze_frame`` at a bounded cadence, and stores a
 thread-safe latest analysis snapshot for downstream readers.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import logging
 from threading import Event, Lock, Thread
@@ -36,6 +36,7 @@ class RealtimeAnalysisSnapshot:
     box_coord_system: str
     message: str
     error: str | None = None
+    analysis_seq: int = 0
 
 
 class RealtimeAnalysisWorker:
@@ -61,6 +62,7 @@ class RealtimeAnalysisWorker:
         self._thread: Thread | None = None
         self._running = False
         self._last_analyzed_frame_id: int | None = None
+        self._analysis_seq = 0
         self._latest_snapshot = RealtimeAnalysisSnapshot(
             frame_id=None,
             timestamp_sec=None,
@@ -74,6 +76,7 @@ class RealtimeAnalysisWorker:
             box_coord_system=BOX_COORD_SYSTEM_NORMALIZED_XYXY,
             message="Analysis worker not started.",
             error=None,
+            analysis_seq=0,
         )
 
     @property
@@ -88,6 +91,7 @@ class RealtimeAnalysisWorker:
 
             self._stop_event.clear()
             self._last_analyzed_frame_id = None
+            self._analysis_seq = 0
             self._latest_snapshot = RealtimeAnalysisSnapshot(
                 frame_id=None,
                 timestamp_sec=None,
@@ -101,6 +105,7 @@ class RealtimeAnalysisWorker:
                 box_coord_system=BOX_COORD_SYSTEM_NORMALIZED_XYXY,
                 message="Waiting for webcam frames.",
                 error=None,
+                analysis_seq=0,
             )
             self._thread = Thread(target=self._run_loop, name=self._thread_name, daemon=True)
             self._running = True
@@ -137,6 +142,7 @@ class RealtimeAnalysisWorker:
                 box_coord_system=snapshot.box_coord_system,
                 message=snapshot.message,
                 error=snapshot.error,
+                analysis_seq=snapshot.analysis_seq,
             )
 
     def _run_loop(self) -> None:
@@ -225,7 +231,8 @@ class RealtimeAnalysisWorker:
 
     def _set_snapshot(self, snapshot: RealtimeAnalysisSnapshot) -> None:
         with self._lock:
-            self._latest_snapshot = snapshot
+            self._analysis_seq += 1
+            self._latest_snapshot = replace(snapshot, analysis_seq=self._analysis_seq)
 
 
 __all__ = [

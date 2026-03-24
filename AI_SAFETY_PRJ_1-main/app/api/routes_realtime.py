@@ -39,7 +39,8 @@ STATUS_EVENT_TYPES = ("fall", "inactive", "violence")
 STATUS_EVENT_RECENCY_SECONDS = 60
 OVERLAY_STREAM_EVENT = "overlay"
 OVERLAY_STREAM_POLL_SEC = 0.2
-OVERLAY_STREAM_HEARTBEAT_SEC = 15.0
+OVERLAY_STREAM_HEARTBEAT_SEC = max(1.0, settings.realtime_sse_keepalive_interval_sec)
+OVERLAY_STALE_THRESHOLD_MS = max(0, settings.realtime_overlay_stale_threshold_ms)
 
 
 realtime_event_logger = EventLogger(str(REALTIME_EVENT_LOG_PATH))
@@ -183,6 +184,14 @@ def _to_iso8601(value: datetime | None) -> str | None:
 
 
 def _build_overlay_payload(*, snapshot: object, capture_status: object) -> dict[str, object]:
+    analyzed_at = getattr(snapshot, "analyzed_at", None)
+    now = datetime.now(timezone.utc)
+    overlay_age_ms = None
+    if isinstance(analyzed_at, datetime):
+        overlay_age_ms = max(0, int((now - analyzed_at).total_seconds() * 1000))
+
+    ready = bool(getattr(snapshot, "ready", False))
+    is_stale = bool(ready and overlay_age_ms is not None and overlay_age_ms > OVERLAY_STALE_THRESHOLD_MS)
     source_size = (
         {
             "width": snapshot.source_size[0],
@@ -192,16 +201,21 @@ def _build_overlay_payload(*, snapshot: object, capture_status: object) -> dict[
         else None
     )
     return {
-        "ready": snapshot.ready,
+        "ready": ready,
         "frame_id": snapshot.frame_id,
         "timestamp_sec": snapshot.timestamp_sec,
         "captured_at": _to_iso8601(snapshot.captured_at),
-        "analyzed_at": _to_iso8601(snapshot.analyzed_at),
+        "analyzed_at": _to_iso8601(analyzed_at),
+        "server_now": now.isoformat(),
         "source_size": source_size,
         "states": snapshot.states,
         "box_coord_system": getattr(snapshot, "box_coord_system", BOX_COORD_SYSTEM_NORMALIZED_XYXY),
         "objects": snapshot.objects,
         "banners": snapshot.banners,
+        "analysis_seq": getattr(snapshot, "analysis_seq", None),
+        "overlay_age_ms": overlay_age_ms,
+        "overlay_stale_threshold_ms": OVERLAY_STALE_THRESHOLD_MS,
+        "is_stale": is_stale,
         "message": snapshot.message,
         "open_failed": capture_status.open_failed,
         "error": snapshot.error,
@@ -215,6 +229,7 @@ def _overlay_stream_dedupe_key(payload: dict[str, object]) -> tuple[object, ...]
     return (
         "state",
         payload.get("ready"),
+        payload.get("analysis_seq"),
         payload.get("message"),
         payload.get("error"),
         payload.get("open_failed"),

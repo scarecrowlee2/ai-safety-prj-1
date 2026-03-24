@@ -96,6 +96,7 @@ def test_worker_analyzes_only_new_frame_id_and_updates_latest_snapshot() -> None
         assert snapshot.objects == [{"label": "obj-2"}]
         assert snapshot.banners == [{"text": "banner-2", "level": "watch"}]
         assert snapshot.message == "ok"
+        assert snapshot.analysis_seq >= 1
     finally:
         worker.stop()
 
@@ -118,6 +119,7 @@ def test_worker_survives_missing_frame_and_open_failed_state() -> None:
         failed = worker.get_latest_snapshot()
         assert failed.ready is False
         assert failed.error == "camera offline"
+        assert failed.analysis_seq >= 1
         assert pipeline.analyzed_frame_ids == []
     finally:
         worker.stop()

@@ -41,6 +41,8 @@ class Settings:
     realtime_webcam_height: int = int(os.getenv("REALTIME_WEBCAM_HEIGHT", "540"))
     realtime_webcam_fps: float = float(os.getenv("REALTIME_WEBCAM_FPS", "15.0"))
     realtime_analysis_fps: float = float(os.getenv("REALTIME_ANALYSIS_FPS", "5.0"))
+    realtime_overlay_stale_threshold_ms: int = int(os.getenv("REALTIME_OVERLAY_STALE_THRESHOLD_MS", "3000"))
+    realtime_sse_keepalive_interval_sec: float = float(os.getenv("REALTIME_SSE_KEEPALIVE_INTERVAL_SEC", "15.0"))
     realtime_webcam_backend: int | None = (
         int(os.getenv("REALTIME_WEBCAM_BACKEND", "").strip())
         if os.getenv("REALTIME_WEBCAM_BACKEND", "").strip()

@@ -22,11 +22,15 @@ class RealtimePipelineResult:
 class RealtimePipeline:
     """Realtime frame-processing coordinator used by streaming routes."""
 
-    def __init__(self, event_log_path: str = "data/realtime_events.jsonl") -> None:
+    def __init__(
+        self,
+        event_log_path: str = "data/realtime_events.jsonl",
+        event_logger: EventLogger | None = None,
+    ) -> None:
         self.fall_detector = FallDetector()
         self.inactive_detector = InactiveDetector()
         self.violence_detector = ViolenceDetector()
-        self.event_logger = EventLogger(event_log_path)
+        self.event_logger = event_logger or EventLogger(event_log_path)
 
         self.last_alert_state = {"fall": False, "inactive": False, "violence": False}
         self._cv2 = None

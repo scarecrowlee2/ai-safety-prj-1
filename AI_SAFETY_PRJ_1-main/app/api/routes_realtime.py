@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import json
 import os
 from contextlib import suppress
-from collections import deque
 from pathlib import Path
 from string import Template
 from time import sleep
@@ -14,6 +12,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from app.core.realtime_pipeline import RealtimePipeline
+from app.storage.event_logger import EventLogger
 from app.core.webcam_reader import WebcamConfig, WebcamOpenError, WebcamReader
 
 router = APIRouter(tags=["realtime"])
@@ -29,39 +28,14 @@ DEFAULT_CAMERA_HEIGHT = 540
 DEFAULT_CAMERA_FPS = 15.0
 
 
-realtime_pipeline = RealtimePipeline(event_log_path=str(REALTIME_EVENT_LOG_PATH))
+realtime_event_logger = EventLogger(str(REALTIME_EVENT_LOG_PATH))
+realtime_pipeline = RealtimePipeline(event_logger=realtime_event_logger)
 
 
 def _load_recent_events(limit: int = RECENT_EVENT_LIMIT) -> list[dict[str, object]]:
-    """Read the most recent realtime JSONL events when a log file is available."""
+    """Read recent realtime events from the inner JSONL-backed event feed."""
 
-    if not REALTIME_EVENT_LOG_PATH.exists():
-        return []
-
-    recent_lines: deque[str] = deque(maxlen=limit)
-    with REALTIME_EVENT_LOG_PATH.open("r", encoding="utf-8") as file:
-        for line in file:
-            stripped = line.strip()
-            if stripped:
-                recent_lines.append(stripped)
-
-    events: list[dict[str, object]] = []
-    for raw_line in reversed(recent_lines):
-        try:
-            record = json.loads(raw_line)
-        except json.JSONDecodeError:
-            continue
-
-        events.append(
-            {
-                "event_type": record.get("event_type", "unknown"),
-                "message": record.get("message", "이벤트 정보가 없습니다."),
-                "logged_at": record.get("logged_at"),
-                "stream_timestamp_sec": record.get("stream_timestamp_sec"),
-            }
-        )
-
-    return events
+    return realtime_event_logger.list_recent(limit=limit)
 
 
 @router.get("/realtime", response_class=HTMLResponse)

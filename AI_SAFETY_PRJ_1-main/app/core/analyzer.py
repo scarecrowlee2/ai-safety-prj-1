@@ -67,6 +67,8 @@ class VideoAnalyzer:
             warnings.append(self.timezone_warning)
         if not self.fall_detector.enabled and self.fall_detector.disabled_reason:
             warnings.append(f"fall detector disabled: {self.fall_detector.disabled_reason}")
+        if not self.inactive_detector.enabled and self.inactive_detector.disabled_reason:
+            warnings.append(f"inactive detector disabled: {self.inactive_detector.disabled_reason}")
         return warnings
 
     # 이 메서드는 단일 프레임을 분석해 이벤트 발생 여부를 판단합니다.

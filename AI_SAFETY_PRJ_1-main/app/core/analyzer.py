@@ -67,8 +67,17 @@ class VideoAnalyzer:
             warnings.append(self.timezone_warning)
         if not self.fall_detector.enabled and self.fall_detector.disabled_reason:
             warnings.append(f"fall detector disabled: {self.fall_detector.disabled_reason}")
+        inactive_status = self.inactive_detector.status()
+        inactive_mode = inactive_status.get("mode", "unknown")
         if not self.inactive_detector.enabled and self.inactive_detector.disabled_reason:
             warnings.append(f"inactive detector disabled: {self.inactive_detector.disabled_reason}")
+        if inactive_mode == "degraded":
+            warnings.append(
+                "inactive detector degraded: person gate disabled "
+                "(set ENABLE_YOLO_PERSON_GATE=true for production full mode)"
+            )
+        if inactive_mode == "error":
+            warnings.append("inactive detector error: person gate required but not ready")
         return warnings
 
     # 이 메서드는 단일 프레임을 분석해 이벤트 발생 여부를 판단합니다.

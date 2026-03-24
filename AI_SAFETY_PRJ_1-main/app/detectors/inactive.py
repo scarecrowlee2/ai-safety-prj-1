@@ -33,6 +33,10 @@ class InactiveDetector:
         self.no_motion_seconds = 0.0
         self._previous_timestamp: float | None = None
         self._yolo = None
+        self.person_gate_enabled = settings.enable_yolo_person_gate
+        self.person_gate_backend = "ultralytics_yolo"
+        self.person_gate_ready = False
+        self.mode = "disabled"
         self._initialize()
 
     # 이 메서드는 비활동 감지기에 필요한 리소스를 초기화합니다.
@@ -45,16 +49,49 @@ class InactiveDetector:
             self.background_subtractor = None
             self.enabled = False
             self.disabled_reason = f"inactive detector unavailable: {exc}"
+            self.person_gate_ready = False
+            self.mode = self._resolve_mode()
             return
 
-        if settings.enable_yolo_person_gate and YOLO is not None:
-            try:
-                self._yolo = YOLO(settings.yolo_model)
-            except Exception as exc:  # pragma: no cover - runtime/environment dependent
-                self._yolo = None
-                self.disabled_reason = (
-                    f"{self.disabled_reason}; yolo person gate disabled: {exc}" if self.disabled_reason else f"yolo person gate disabled: {exc}"
-                )
+        if self.person_gate_enabled:
+            self._initialize_required_person_gate()
+
+        self.mode = self._resolve_mode()
+
+    def _initialize_required_person_gate(self) -> None:
+        if YOLO is None:
+            self.person_gate_ready = False
+            self.mode = self._resolve_mode()
+            self.disabled_reason = "person gate required but ultralytics is unavailable"
+            raise RuntimeError(
+                "ENABLE_YOLO_PERSON_GATE=true but ultralytics is unavailable. "
+                "Install optional dependencies and verify YOLO runtime."
+            )
+
+        try:
+            self._yolo = YOLO(settings.yolo_model)
+            self.person_gate_ready = True
+        except Exception as exc:  # pragma: no cover - runtime/environment dependent
+            self._yolo = None
+            self.person_gate_ready = False
+            self.mode = self._resolve_mode()
+            self.disabled_reason = (
+                "person gate required but YOLO initialization failed: "
+                f"{exc}"
+            )
+            raise RuntimeError(
+                "ENABLE_YOLO_PERSON_GATE=true but YOLO person gate failed to initialize "
+                f"(model={settings.yolo_model}): {exc}"
+            ) from exc
+
+    def _resolve_mode(self) -> str:
+        if not self.enabled:
+            return "disabled"
+        if not self.person_gate_enabled:
+            return "degraded"
+        if self.person_gate_ready:
+            return "full"
+        return "error"
 
     # 이 메서드는 움직임 계산에 사용할 배경 차감기를 초기화합니다.
     def init_background_subtractor(self) -> Any:
@@ -71,11 +108,20 @@ class InactiveDetector:
         return {
             "enabled": self.enabled,
             "backend": "opencv_mog2",
+            "person_gate_enabled": self.person_gate_enabled,
+            "person_gate_backend": self.person_gate_backend,
+            "person_gate_model": settings.yolo_model if self.person_gate_enabled else None,
+            "person_gate_ready": self.person_gate_ready,
+            "mode": self.mode,
             "reason": self.disabled_reason,
         }
 
     # 이 메서드는 프레임 안에 사람이 있는지와 사람 수를 추정합니다.
     def detect_person(self, frame: np.ndarray) -> tuple[bool, int, tuple[int, int, int, int] | None]:
+        if not self.person_gate_enabled:
+            # person gate가 꺼진 운영 모드에서는 inactive detector를 degraded로 간주한다.
+            return False, 0, None
+
         if self._yolo is None:
             # YOLO를 사용할 수 없으면 "사람 있음"으로 가정하지 않고 보수적으로 미검출 처리한다.
             return False, 0, None

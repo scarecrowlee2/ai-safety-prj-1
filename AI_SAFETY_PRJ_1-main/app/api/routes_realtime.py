@@ -94,8 +94,10 @@ def _generate_webcam_stream():
     frame_delay = 1.0 / max(reader.fps, 1.0)
 
     try:
-        for webcam_frame in reader.frames():
-            result = realtime_pipeline.process_frame(webcam_frame.image, webcam_frame.timestamp_sec)
+        stream_started_at = 0.0
+        for frame_index, webcam_frame in enumerate(reader.frames()):
+            timestamp_sec = getattr(webcam_frame, "timestamp_sec", stream_started_at + (frame_index * frame_delay))
+            result = realtime_pipeline.process_frame(webcam_frame.image, float(timestamp_sec))
             yield _mjpeg_chunk(_encode_jpeg(result.frame))
             sleep(frame_delay)
     finally:

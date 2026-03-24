@@ -6,6 +6,8 @@ from pathlib import Path
 from app.core.config import settings
 from app.core.timeutils import resolve_timezone
 from app.core.video import VideoReader
+from app.detectors.adapters import run_fall_detector, run_inactive_detector
+from app.detectors.contracts import DetectorInput
 from app.detectors.fall import FallDetector
 from app.detectors.inactive import InactiveDetector
 from app.schemas import AnalyzeVideoResponse, DetectionEvent, EventType
@@ -74,9 +76,10 @@ class VideoAnalyzer:
         detected_at = datetime.now(self.tz)
         timestamp_ms = int(round(timestamp_sec * 1000))
 
-        keypoints = self.fall_detector.extract_keypoints(frame_image, timestamp_ms=timestamp_ms)
-        fall_decision = self.fall_detector.is_fallen(keypoints)
-        fall_decision = self.fall_detector.check_duration(timestamp_sec, fall_decision)
+        detector_input = DetectorInput(frame=frame_image, timestamp_sec=timestamp_sec)
+
+        fall_result = run_fall_detector(self.fall_detector, detector_input)
+        fall_decision = fall_result.raw_decision
 
         self.metrics_logger.append(
             resident_id=resident_id,
@@ -94,7 +97,7 @@ class VideoAnalyzer:
             },
         )
 
-        if self.fall_detector.should_emit(fall_decision) and self._can_emit(EventType.FALL, timestamp_sec):
+        if fall_result.detected and self._can_emit(EventType.FALL, timestamp_sec):
             capture_record = self.snapshot_storage.save(frame_image, resident_id, EventType.FALL, detected_at)
             event = DetectionEvent(
                 resident_id=resident_id,
@@ -109,7 +112,8 @@ class VideoAnalyzer:
             self._mark_emitted(EventType.FALL, timestamp_sec)
             self.fall_detector.horizontal_streak_seconds = 0.0
 
-        inactive_decision = self.inactive_detector.evaluate(frame_image, timestamp_sec)
+        inactive_result = run_inactive_detector(self.inactive_detector, detector_input)
+        inactive_decision = inactive_result.raw_decision
         self.metrics_logger.append(
             resident_id=resident_id,
             stream_name="inactive",
@@ -123,7 +127,7 @@ class VideoAnalyzer:
             },
         )
 
-        if self.inactive_detector.should_emit(inactive_decision) and self._can_emit(EventType.INACTIVE, timestamp_sec):
+        if inactive_result.detected and self._can_emit(EventType.INACTIVE, timestamp_sec):
             capture_record = self.snapshot_storage.save(frame_image, resident_id, EventType.INACTIVE, detected_at)
             event = DetectionEvent(
                 resident_id=resident_id,

@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 import numpy as np
 from PIL import Image, ImageDraw
 
+from app.core.realtime_pipeline import RealtimePipeline
 from app.core.realtime_capture import RealtimeCaptureService
 from app.core.realtime_capture_registry import get_realtime_capture_service as get_global_realtime_capture_service
 from app.core.realtime_notifier_policy import RealtimeNotifierIntegration
@@ -39,6 +40,12 @@ realtime_event_logger = EventLogger(str(REALTIME_EVENT_LOG_PATH))
 realtime_event_store = RealtimeEventStore(feed=realtime_event_logger.store.feed)
 realtime_notifier = RealtimeNotifierIntegration(notifier=EventNotifier(EventStore()))
 
+
+
+def get_realtime_capture_service() -> RealtimeCaptureService:
+    """Return the app-wide realtime capture service singleton."""
+
+    return get_global_realtime_capture_service()
 
 
 def get_realtime_capture_service() -> RealtimeCaptureService:

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from app.core.realtime_capture import RealtimeFrameSnapshot
+from app.main import app
 
 
 @dataclass
@@ -23,7 +24,16 @@ class _FakeCaptureService:
         return self.status
 
 
-def test_generate_webcam_stream_yields_mjpeg_chunk_from_latest_snapshot(monkeypatch) -> None:
+def test_realtime_dashboard_points_to_inner_video_route() -> None:
+    client = TestClient(app)
+
+    response = client.get("/realtime")
+
+    assert response.status_code == 200
+    assert 'src="/realtime/video"' in response.text
+
+
+def test_realtime_video_streams_latest_capture_frame(monkeypatch) -> None:
     from app.api import routes_realtime
 
     snapshot = RealtimeFrameSnapshot(
@@ -51,7 +61,7 @@ def test_generate_webcam_stream_yields_mjpeg_chunk_from_latest_snapshot(monkeypa
     assert service.latest_frame_calls >= 1
 
 
-def test_generate_webcam_stream_yields_fallback_chunk_without_snapshot(monkeypatch) -> None:
+def test_realtime_video_returns_fallback_frame_when_snapshot_missing(monkeypatch) -> None:
     from app.api import routes_realtime
 
     captured_messages: list[str] = []
@@ -66,6 +76,7 @@ def test_generate_webcam_stream_yields_fallback_chunk_without_snapshot(monkeypat
         "_build_status_frame",
         lambda message: captured_messages.append(message) or b"fallback-jpeg",
     )
+    client = TestClient(app)
 
     stream = routes_realtime._generate_webcam_stream()
     first_chunk = next(stream)

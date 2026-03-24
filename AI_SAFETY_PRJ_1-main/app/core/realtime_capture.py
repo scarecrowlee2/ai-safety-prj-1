@@ -112,7 +112,6 @@ class RealtimeCaptureService:
             self._stop_event.clear()
             self._open_failed = False
             self._last_error = None
-            self._latest_frame = None
             self._started_at = datetime.now(timezone.utc)
             self._stopped_at = None
 
@@ -185,7 +184,6 @@ class RealtimeCaptureService:
             with self._lock:
                 self._open_failed = True
                 self._last_error = str(exc)
-                self._latest_frame = None
                 self._running = False
                 self._stopped_at = datetime.now(timezone.utc)
                 self._release_reader_locked()

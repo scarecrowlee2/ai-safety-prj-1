@@ -5,7 +5,9 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 import cv2
 
 from app.core.video import WebcamReader
-from app.detectors.fall import FallDetector
+from app.detectors.adapters import run_fall_detector
+from app.detectors.contracts import DetectorInput
+from app.detectors.fall import FallDecision, FallDetector
 from app.detectors.inactive import InactiveDetector
 from app.detectors.violence import ViolenceDetector
 from app.storage.event_logger import EventLogger
@@ -17,7 +19,7 @@ app = FastAPI(title="Realtime Safety Stream", version="1.1.0")
 # 이 메서드는 실시간 스트림에 사용할 감지기, 색상, 이벤트 로거를 준비합니다.
 class RealtimeSafetyPipeline:
     def __init__(self):
-        self.fall_detector = FallDetector(hold_seconds=3.0, aspect_ratio_threshold=1.15)
+        self.fall_detector = FallDetector()
         self.inactive_detector = InactiveDetector(inactive_seconds=20.0, motion_threshold=0.002)
         self.violence_detector = ViolenceDetector(
             motion_threshold=0.025,
@@ -39,9 +41,9 @@ class RealtimeSafetyPipeline:
         }
 
     # 이 메서드는 경고 상태가 새로 켜진 순간만 골라 로그 파일에 저장합니다.
-    def _log_new_alerts(self, fall, inactive, violence, timestamp_sec: float):
+    def _log_new_alerts(self, fall: FallDecision, inactive, violence, fall_detected: bool, timestamp_sec: float):
         current = {
-            "fall": bool(fall.should_alert),
+            "fall": bool(fall_detected),
             "inactive": bool(inactive.should_alert),
             "violence": bool(violence.should_alert),
         }
@@ -82,19 +84,21 @@ class RealtimeSafetyPipeline:
     def process(self, frame, timestamp_sec: float):
         overlay = frame.copy()
 
-        fall = self.fall_detector.evaluate(frame, timestamp_sec)
+        detector_input = DetectorInput(frame=frame, timestamp_sec=timestamp_sec)
+        fall_result = run_fall_detector(self.fall_detector, detector_input)
+        fall = fall_result.raw_decision
         inactive = self.inactive_detector.evaluate(frame, timestamp_sec)
         violence = self.violence_detector.evaluate(frame, timestamp_sec)
 
-        self._log_new_alerts(fall, inactive, violence, timestamp_sec)
+        self._log_new_alerts(fall, inactive, violence, fall_result.detected, timestamp_sec)
 
         y = self._draw_status_panel(overlay)
 
         lines = [
     (
-        f"Fall: {'ALERT' if fall.should_alert else ('WATCH' if fall.is_candidate else 'NORMAL')} | "
+        f"Fall: {'ALERT' if fall_result.detected else ('WATCH' if fall.is_candidate else 'NORMAL')} | "
         f"hold={fall.horizontal_seconds:.1f}s",
-        self.overlay_colors["fall_alert"] if fall.should_alert else self.overlay_colors["fall_watch"] if fall.is_candidate else self.overlay_colors["safe"],
+        self.overlay_colors["fall_alert"] if fall_result.detected else self.overlay_colors["fall_watch"] if fall.is_candidate else self.overlay_colors["safe"],
     ),
     (
         f"Inactive: {'ALERT' if inactive.should_alert else ('WATCH' if inactive.person_present else 'NO PERSON')} | "
@@ -111,21 +115,6 @@ class RealtimeSafetyPipeline:
         for line, color in lines:
             cv2.putText(overlay, line, (25, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
             y += 32
-
-        if fall.bbox is not None:
-            x, y1, w, h = fall.bbox
-            box_color = self.overlay_colors["fall_alert"] if fall.should_alert else self.overlay_colors["fall_watch"]
-            box_thickness = 4 if fall.should_alert else 2
-            cv2.rectangle(overlay, (x, y1), (x + w, y1 + h), box_color, box_thickness)
-            cv2.putText(
-                overlay,
-                "FALL ALERT" if fall.should_alert else "FALL WATCH",
-                (x, max(30, y1 - 10)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                box_color,
-                2,
-            )
 
         if inactive.bbox is not None:
             x, y1, w, h = inactive.bbox
@@ -157,7 +146,7 @@ class RealtimeSafetyPipeline:
             )
 
         alerts = []
-        if fall.should_alert:
+        if fall_result.detected:
             alerts.append(("FALL / FAINTING SUSPECTED", self.overlay_colors["fall_alert"]))
         if inactive.should_alert:
             alerts.append(("NO RESPONSE SUSPECTED", self.overlay_colors["inactive_alert"]))

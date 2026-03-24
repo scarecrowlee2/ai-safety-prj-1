@@ -41,6 +41,8 @@ class Settings:
     fall_min_pose_detection_confidence: float = float(os.getenv("FALL_MIN_POSE_DETECTION_CONFIDENCE", "0.5"))
     fall_min_pose_presence_confidence: float = float(os.getenv("FALL_MIN_POSE_PRESENCE_CONFIDENCE", "0.5"))
     fall_min_tracking_confidence: float = float(os.getenv("FALL_MIN_TRACKING_CONFIDENCE", "0.5"))
+    fall_enable_hog_fallback: bool = os.getenv("FALL_ENABLE_HOG_FALLBACK", "true").lower() == "true"
+    fall_hog_aspect_ratio_threshold: float = float(os.getenv("FALL_HOG_ASPECT_RATIO_THRESHOLD", "1.15"))
 
     inactive_seconds: float = float(os.getenv("INACTIVE_SECONDS", "30.0"))
     motion_threshold: float = float(os.getenv("MOTION_THRESHOLD", "0.002"))

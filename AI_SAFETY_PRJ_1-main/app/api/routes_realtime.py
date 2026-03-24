@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 import numpy as np
 from PIL import Image, ImageDraw
 
+from app.core.realtime_pipeline import RealtimePipeline
 from app.core.webcam_reader import WebcamConfig, WebcamOpenError, WebcamReader
 
 router = APIRouter(tags=["realtime"])
@@ -26,6 +27,9 @@ MJPEG_BOUNDARY = "frame"
 DEFAULT_CAMERA_WIDTH = 960
 DEFAULT_CAMERA_HEIGHT = 540
 DEFAULT_CAMERA_FPS = 15.0
+
+
+realtime_pipeline = RealtimePipeline(event_log_path=str(REALTIME_EVENT_LOG_PATH))
 
 
 def _load_recent_events(limit: int = RECENT_EVENT_LIMIT) -> list[dict[str, object]]:
@@ -117,7 +121,8 @@ def _generate_webcam_stream():
 
     try:
         for webcam_frame in reader.frames():
-            yield _mjpeg_chunk(_encode_jpeg(webcam_frame.image))
+            result = realtime_pipeline.process_frame(webcam_frame.image, webcam_frame.timestamp_sec)
+            yield _mjpeg_chunk(_encode_jpeg(result.frame))
             sleep(frame_delay)
     finally:
         with suppress(Exception):

@@ -2,8 +2,8 @@
 
 PRD와 첨부 계획서를 바탕으로 만든 FastAPI 기반 Python 프로젝트입니다.
 
-> 저장소 루트에는 과거 외부 실시간 프로토타입이 `legacy/outer-realtime-app/` 으로 분리 보관되어 있습니다.
-> 현재 공식 실행 경로는 이 디렉터리(`AI_SAFETY_PRJ_1-main/`)만 사용하세요.
+> 저장소 루트의 외부 실시간 프로토타입은 최종 정리 후 문서/아카이브로만 남아 있습니다 (`legacy/outer-realtime-app/`, `legacy/archived_realtime_reference/`).
+> 현재 공식 실행 및 신규 개발 경로는 이 디렉터리(`AI_SAFETY_PRJ_1-main/`)만 사용하세요.
 
 핵심 목표는 다음 흐름을 데모 수준으로 재현하는 것입니다.
 

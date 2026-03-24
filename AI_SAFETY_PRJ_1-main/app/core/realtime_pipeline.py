@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 
+from app.detectors.adapters import run_fall_detector, run_inactive_detector, run_violence_detector
+from app.detectors.contracts import DetectorInput
 from app.detectors.fall import FallDecision, FallDetector
 from app.detectors.inactive import InactiveDecision, InactiveDetector
 from app.detectors.violence import ViolenceDecision, ViolenceDetector
@@ -49,24 +51,36 @@ class RealtimePipeline:
 
     def _get_cv2(self):
         if self._cv2 is None:
-            import cv2
-
-            self._cv2 = cv2
-        return self._cv2
+            try:
+                import cv2
+            except Exception:
+                self._cv2 = False
+            else:
+                self._cv2 = cv2
+        return self._cv2 if self._cv2 is not False else None
 
     def process_frame(self, frame: np.ndarray, timestamp_sec: float) -> RealtimePipelineResult:
         """Run realtime detectors, draw overlays, and return frame + metadata."""
 
         overlay = frame.copy()
 
-        fall = self.fall_detector.check_duration(
-            timestamp_sec,
-            self.fall_detector.is_fallen(self.fall_detector.extract_keypoints(frame, int(timestamp_sec * 1000))),
-        )
-        inactive = self.inactive_detector.evaluate(frame, timestamp_sec)
-        violence = self._evaluate_violence(frame)
+        detector_input = DetectorInput(frame=frame, timestamp_sec=timestamp_sec)
+        fall_result = run_fall_detector(self.fall_detector, detector_input)
+        inactive_result = run_inactive_detector(self.inactive_detector, detector_input)
+        violence_result = run_violence_detector(self.violence_detector, detector_input)
 
-        states = self._build_state_flags(fall=fall, inactive=inactive, violence=violence)
+        fall = fall_result.raw_decision
+        inactive = inactive_result.raw_decision
+        violence = violence_result.raw_decision
+
+        states = self._build_state_flags(
+            fall=fall,
+            inactive=inactive,
+            violence=violence,
+            fall_detected=fall_result.detected,
+            inactive_detected=inactive_result.detected,
+            violence_detected=violence_result.detected,
+        )
         self._log_new_alerts(fall=fall, inactive=inactive, violence=violence, states=states, timestamp_sec=timestamp_sec)
 
         self._draw_overlay(overlay=overlay, states=states, fall=fall, inactive=inactive, violence=violence)
@@ -76,20 +90,12 @@ class RealtimePipeline:
             "states": states,
             "events": self._event_metadata(states),
             "detections": {
-                "fall": asdict(fall),
-                "inactive": asdict(inactive),
-                "violence": asdict(violence),
+                "fall": fall_result.to_dict(),
+                "inactive": inactive_result.to_dict(),
+                "violence": violence_result.to_dict(),
             },
         }
         return RealtimePipelineResult(frame=overlay, metadata=metadata)
-
-    def _evaluate_violence(self, frame: np.ndarray) -> ViolenceDecision:
-        keypoints = self.violence_detector.extract_keypoints(frame)
-        num_persons = self.violence_detector.count_persons(frame)
-        max_velocity = self.violence_detector.calculate_velocity(keypoints)
-        suspicious = self.violence_detector.is_violent(num_persons, max_velocity)
-        suspicious_frames = self.violence_detector.check_consecutive_frames(suspicious)
-        return ViolenceDecision(num_persons=num_persons, max_velocity=max_velocity, suspicious_frames=suspicious_frames)
 
     def _build_state_flags(
         self,
@@ -97,10 +103,13 @@ class RealtimePipeline:
         fall: FallDecision,
         inactive: InactiveDecision,
         violence: ViolenceDecision,
+        fall_detected: bool,
+        inactive_detected: bool,
+        violence_detected: bool,
     ) -> dict[str, bool]:
-        fall_alert = self.fall_detector.should_emit(fall)
-        inactive_alert = self.inactive_detector.should_emit(inactive)
-        violence_alert = violence.suspicious_frames >= 2
+        fall_alert = fall_detected
+        inactive_alert = inactive_detected
+        violence_alert = violence_detected
 
         return {
             "fall_alert": fall_alert,
@@ -120,6 +129,10 @@ class RealtimePipeline:
         inactive: InactiveDecision,
         violence: ViolenceDecision,
     ) -> None:
+        cv2 = self._get_cv2()
+        if cv2 is None:
+            return
+
         y = self._draw_status_panel(overlay)
 
         lines = [
@@ -153,7 +166,6 @@ class RealtimePipeline:
         ]
 
         for line, color in lines:
-            cv2 = self._get_cv2()
             cv2.putText(overlay, line, (25, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
             y += 32
 
@@ -167,7 +179,6 @@ class RealtimePipeline:
 
         banner_y = 215
         for alert, color in alerts:
-            cv2 = self._get_cv2()
             cv2.rectangle(overlay, (18, banner_y - 28), (650, banner_y + 10), color, -1)
             cv2.putText(
                 overlay,
@@ -182,6 +193,8 @@ class RealtimePipeline:
 
     def _draw_status_panel(self, overlay: np.ndarray) -> int:
         cv2 = self._get_cv2()
+        if cv2 is None:
+            return 40
         cv2.rectangle(overlay, (10, 10), (980, 170), self.overlay_colors["panel"], -1)
         cv2.rectangle(overlay, (10, 10), (980, 170), (90, 90, 90), 2)
         return 40

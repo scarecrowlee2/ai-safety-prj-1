@@ -214,6 +214,58 @@ def test_realtime_overlay_latest_returns_fallback_when_not_ready(monkeypatch) ->
     assert payload["error"] == "camera offline"
 
 
+def test_realtime_diagnostics_returns_capture_analysis_overlay_state(monkeypatch) -> None:
+    snapshot = _FakeAnalysisSnapshot(
+        frame_id=55,
+        timestamp_sec=10.0,
+        captured_at=datetime(2026, 3, 24, 12, 2, tzinfo=timezone.utc),
+        analyzed_at=datetime(2026, 3, 24, 12, 2, 1, tzinfo=timezone.utc),
+        source_size=(640, 480),
+        states={},
+        objects=[],
+        banners=[],
+        ready=True,
+        box_coord_system="normalized_xyxy",
+        message="ok",
+        error=None,
+    )
+    service = _FakeCaptureService(
+        snapshot=None,
+        status=SimpleNamespace(
+            running=True,
+            open_failed=False,
+            last_error=None,
+            frame_id=54,
+            last_frame_at=datetime(2026, 3, 24, 12, 2, tzinfo=timezone.utc),
+        ),
+    )
+    app = FastAPI()
+    app.include_router(routes_realtime.api_router)
+    client = TestClient(app)
+
+    monkeypatch.setattr(routes_realtime, "get_realtime_capture_service", lambda: service)
+    monkeypatch.setattr(
+        routes_realtime,
+        "get_realtime_analysis_worker",
+        lambda: SimpleNamespace(is_running=True, get_latest_snapshot=lambda: snapshot),
+    )
+
+    response = client.get("/api/v1/realtime/diagnostics")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["capture"]["running"] is True
+    assert payload["capture"]["open_failed"] is False
+    assert payload["capture"]["last_error"] is None
+    assert payload["capture"]["latest_frame"]["frame_id"] == 54
+    assert payload["capture"]["latest_frame"]["captured_at"] == "2026-03-24T12:02:00+00:00"
+    assert payload["analysis"]["running"] is True
+    assert payload["analysis"]["latest_frame"]["frame_id"] == 55
+    assert payload["analysis"]["latest_frame"]["analyzed_at"] == "2026-03-24T12:02:01+00:00"
+    assert payload["overlay"]["transport_recommended_mode"] == "sse"
+    assert isinstance(payload["server_now"], str)
+
+
 class _FakeRequest:
     def __init__(self) -> None:
         self._checks = 0

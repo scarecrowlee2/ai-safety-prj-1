@@ -18,6 +18,7 @@
       data-events-endpoint="$events_path?limit=$recent_event_count"
       data-overlay-endpoint="$overlay_path"
       data-overlay-stream-endpoint="/api/v1/realtime/overlay/stream"
+      data-diagnostics-endpoint="$diagnostics_path"
     >
       <header class="hero-card panel">
         <div>
@@ -122,6 +123,49 @@
               <strong>운영 메모</strong>
               <p>이벤트가 발생하면 로그 파일에 누적 기록됩니다. 현장 대응 전에는 최근 이벤트 목록과 영상 오버레이를 함께 확인하세요.</p>
               <p class="log-path">로그 위치: <code>$log_path</code></p>
+            </div>
+          </section>
+
+          <section class="panel diagnostics-panel">
+            <div class="panel-header compact">
+              <div>
+                <p class="panel-kicker">운영 Diagnostics</p>
+                <h2>시스템 상태</h2>
+              </div>
+            </div>
+            <div class="diagnostics-list">
+              <div class="diagnostics-item">
+                <span class="diagnostics-label">Capture</span>
+                <span id="diag-capture-running" class="diagnostics-value">확인 중…</span>
+              </div>
+              <div class="diagnostics-item">
+                <span class="diagnostics-label">Capture latest</span>
+                <span id="diag-capture-latest" class="diagnostics-value">-</span>
+              </div>
+              <div class="diagnostics-item">
+                <span class="diagnostics-label">Capture error</span>
+                <span id="diag-capture-error" class="diagnostics-value">-</span>
+              </div>
+              <div class="diagnostics-item">
+                <span class="diagnostics-label">Analysis</span>
+                <span id="diag-analysis-running" class="diagnostics-value">확인 중…</span>
+              </div>
+              <div class="diagnostics-item">
+                <span class="diagnostics-label">Analysis latest</span>
+                <span id="diag-analysis-latest" class="diagnostics-value">-</span>
+              </div>
+              <div class="diagnostics-item">
+                <span class="diagnostics-label">Overlay mode</span>
+                <span id="diag-overlay-mode" class="diagnostics-value">-</span>
+              </div>
+              <div class="diagnostics-item">
+                <span class="diagnostics-label">권장 수신 모드</span>
+                <span id="diag-overlay-recommended" class="diagnostics-value">-</span>
+              </div>
+              <div class="diagnostics-item">
+                <span class="diagnostics-label">갱신 시각</span>
+                <span id="diag-updated-at" class="diagnostics-value">-</span>
+              </div>
             </div>
           </section>
         </aside>

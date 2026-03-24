@@ -343,6 +343,37 @@ h2 {
   color: var(--text-strong);
 }
 
+.diagnostics-panel {
+  padding: 20px;
+}
+
+.diagnostics-list {
+  display: grid;
+  gap: 10px;
+}
+
+.diagnostics-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.diagnostics-label {
+  color: var(--text-subtle);
+  font-size: 0.8rem;
+}
+
+.diagnostics-value {
+  color: var(--text-main);
+  font-size: 0.86rem;
+  text-align: right;
+}
+
 .log-path {
   margin-top: 10px;
 }

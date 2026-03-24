@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
@@ -10,6 +12,7 @@ from app.notifier import EventNotifier
 from app.storage.event_store import EventStore
 
 router = APIRouter(prefix="/api/v1", tags=["analyzer"])
+MIN_UPLOAD_CHUNK_SIZE = 64 * 1024
 
 
 def get_video_analyzer() -> VideoAnalyzer:
@@ -41,12 +44,17 @@ async def analyze_video(
     notify: bool = Form(False),
 ) -> dict:
     suffix = Path(video.filename or "upload.mp4").suffix or ".mp4"
-    upload_path = settings.temp_upload_dir / f"resident_{resident_id}_{Path(video.filename or 'upload').stem}{suffix}"
-
-    content = await video.read()
-    upload_path.write_bytes(content)
+    filename_stem = Path(video.filename or "upload").stem or "upload"
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    unique_token = uuid4().hex[:8]
+    upload_path = settings.temp_upload_dir / f"resident_{resident_id}_{timestamp}_{unique_token}_{filename_stem}{suffix}"
+    chunk_size = max(settings.upload_write_chunk_size, MIN_UPLOAD_CHUNK_SIZE)
 
     try:
+        with upload_path.open("wb") as upload_buffer:
+            while chunk := await video.read(chunk_size):
+                upload_buffer.write(chunk)
+
         analyzer = get_video_analyzer()
         result = analyzer.analyze_video(resident_id=resident_id, video_path=upload_path)
         if notify:
@@ -58,6 +66,10 @@ async def analyze_video(
         return result.model_dump(mode="json")
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        await video.close()
+        if not settings.keep_temp_upload_files:
+            upload_path.unlink(missing_ok=True)
 
 
 # 이 함수는 전송에 실패해 outbox에 남아 있는 이벤트 재전송을 시도합니다.

@@ -1,7 +1,8 @@
 const page = document.querySelector('.monitor-page');
 const eventList = document.querySelector('#event-list');
 const refreshLabel = document.querySelector('#event-refresh-label');
-const endpoint = page?.dataset.eventsEndpoint;
+const eventsEndpoint = page?.dataset.eventsEndpoint;
+const statusEndpoint = buildStatusEndpoint(eventsEndpoint);
 
 const eventTypeLabel = {
   fall: '낙상 / 기절',
@@ -10,9 +11,16 @@ const eventTypeLabel = {
 };
 
 const statusTypes = ['fall', 'inactive', 'violence'];
-const EVENT_RECENCY_MS = 60 * 1000;
 
-let hasSuccessfulLoad = false;
+function buildStatusEndpoint(value) {
+  if (!value) return null;
+
+  const [path] = value.split('?');
+  if (!path) return null;
+  if (path.endsWith('/status')) return path;
+  if (path.endsWith('/events')) return `${path.slice(0, -'/events'.length)}/status`;
+  return null;
+}
 
 function formatLoggedAt(value) {
   if (!value) return '시간 정보 없음';
@@ -23,17 +31,6 @@ function formatLoggedAt(value) {
     dateStyle: 'short',
     timeStyle: 'medium',
   }).format(date);
-}
-
-function parseEventTimeMs(event) {
-  if (!event || !event.logged_at) return null;
-
-  const parsedMs = new Date(event.logged_at).getTime();
-  if (!Number.isNaN(parsedMs)) {
-    return parsedMs;
-  }
-
-  return null;
 }
 
 function applyStatusVisual(badgeEl, textEl, state) {
@@ -72,18 +69,14 @@ function setStatusBadge(type, state) {
   applyStatusVisual(badgeEl, textEl, state);
 }
 
-function updateStatusFromEvents(events) {
-  const nowMs = Date.now();
-
+function updateStatusBadges(statusPayload) {
   statusTypes.forEach((type) => {
-    const hasRecentEvent = events.some((event) => {
-      if (event?.event_type !== type) return false;
-      const eventTimeMs = parseEventTimeMs(event);
-      if (!eventTimeMs) return false;
-      return nowMs - eventTimeMs <= EVENT_RECENCY_MS;
-    });
-
-    setStatusBadge(type, hasRecentEvent ? 'warning' : 'normal');
+    const state = statusPayload?.[type];
+    if (state === 'warning' || state === 'error') {
+      setStatusBadge(type, state);
+      return;
+    }
+    setStatusBadge(type, 'normal');
   });
 }
 
@@ -128,10 +121,10 @@ function renderEvents(events) {
 }
 
 async function loadRecentEvents() {
-  if (!endpoint || !eventList || !refreshLabel) return;
+  if (!eventsEndpoint || !eventList || !refreshLabel) return;
 
   try {
-    const response = await fetch(endpoint, { headers: { Accept: 'application/json' } });
+    const response = await fetch(eventsEndpoint, { headers: { Accept: 'application/json' } });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -140,19 +133,12 @@ async function loadRecentEvents() {
     const events = payload.events || payload.items || [];
 
     renderEvents(events);
-    updateStatusFromEvents(events);
-    hasSuccessfulLoad = true;
-
     refreshLabel.textContent = `최근 갱신 ${new Intl.DateTimeFormat('ko-KR', {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
     }).format(new Date())}`;
   } catch (error) {
-    if (!hasSuccessfulLoad) {
-      statusTypes.forEach((type) => setStatusBadge(type, 'error'));
-    }
-
     refreshLabel.textContent = '이벤트 목록을 불러오지 못했습니다';
     eventList.innerHTML = `
       <div class="event-empty">
@@ -164,6 +150,28 @@ async function loadRecentEvents() {
   }
 }
 
+async function loadStatusSummary() {
+  if (!statusEndpoint) {
+    statusTypes.forEach((type) => setStatusBadge(type, 'error'));
+    return;
+  }
+
+  try {
+    const response = await fetch(statusEndpoint, { headers: { Accept: 'application/json' } });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const payload = await response.json();
+    updateStatusBadges(payload);
+  } catch (error) {
+    statusTypes.forEach((type) => setStatusBadge(type, 'error'));
+    console.error(error);
+  }
+}
+
 renderEmptyState();
 loadRecentEvents();
+loadStatusSummary();
 window.setInterval(loadRecentEvents, 10000);
+window.setInterval(loadStatusSummary, 10000);

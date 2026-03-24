@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from app.detectors.contracts import DetectorInput, DetectorResult
+from app.detectors.contracts import DetectorInput, DetectorResult, OverlayAnnotation
 from app.detectors.fall import FallDetector
 from app.detectors.inactive import InactiveDetector
-from app.detectors.violence import ViolenceDecision, ViolenceDetector
+from app.detectors.violence import ViolenceDetector
 
 
 def run_fall_detector(detector: FallDetector, detector_input: DetectorInput) -> DetectorResult:
@@ -42,20 +42,26 @@ def run_inactive_detector(detector: InactiveDetector, detector_input: DetectorIn
 
 
 def run_violence_detector(detector: ViolenceDetector, detector_input: DetectorInput) -> DetectorResult:
-    keypoints = detector.extract_keypoints(detector_input.frame)
-    num_persons = detector.count_persons(detector_input.frame)
-    max_velocity = detector.calculate_velocity(keypoints)
-    suspicious = detector.is_violent(num_persons, max_velocity)
-    suspicious_frames = detector.check_consecutive_frames(suspicious)
-    decision = ViolenceDecision(num_persons=num_persons, max_velocity=max_velocity, suspicious_frames=suspicious_frames)
+    decision = detector.evaluate(detector_input.frame, detector_input.timestamp_sec)
+    detected = detector.should_emit(decision)
 
-    detected = suspicious_frames >= 2
+    box_color = (255, 0, 255) if detected else (180, 0, 255)
+    overlays = [
+        OverlayAnnotation(
+            label=f"P{index + 1}",
+            color_bgr=box_color,
+            box_xyxy=(x, y, x + w, y + h),
+        )
+        for index, (x, y, w, h) in enumerate(decision.boxes)
+    ]
+
     return DetectorResult(
         detector="violence",
         event_type="violence",
         detected=detected,
-        label="VIOLENCE" if detected else ("VIOLENCE_WATCH" if num_persons >= 2 else "NORMAL"),
-        score=max_velocity,
+        label="VIOLENCE" if detected else ("VIOLENCE_WATCH" if decision.num_persons >= 2 else "NORMAL"),
+        score=decision.motion_ratio,
+        overlays=overlays,
         metadata=asdict(decision),
         raw_decision=decision,
     )

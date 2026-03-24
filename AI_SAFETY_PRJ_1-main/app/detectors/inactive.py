@@ -77,7 +77,8 @@ class InactiveDetector:
     # 이 메서드는 프레임 안에 사람이 있는지와 사람 수를 추정합니다.
     def detect_person(self, frame: np.ndarray) -> tuple[bool, int, tuple[int, int, int, int] | None]:
         if self._yolo is None:
-            return True, 1, None
+            # YOLO를 사용할 수 없으면 "사람 있음"으로 가정하지 않고 보수적으로 미검출 처리한다.
+            return False, 0, None
 
         results = self._yolo.predict(frame, verbose=False)
         num_persons = 0

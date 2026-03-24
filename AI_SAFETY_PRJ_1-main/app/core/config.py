@@ -22,6 +22,8 @@ class Settings:
     sqlite_path: Path = Path(os.getenv("SQLITE_PATH", "./data/events.db")).expanduser()
     outbox_jsonl: Path = Path(os.getenv("OUTBOX_JSONL", "./data/outbox/events.jsonl")).expanduser()
     temp_upload_dir: Path = Path(os.getenv("TEMP_UPLOAD_DIR", "./data/uploads")).expanduser()
+    upload_write_chunk_size: int = int(os.getenv("UPLOAD_WRITE_CHUNK_SIZE", str(1024 * 1024)))
+    keep_temp_upload_files: bool = os.getenv("KEEP_TEMP_UPLOAD_FILES", "false").lower() == "true"
 
     spring_boot_event_url: str = os.getenv("SPRING_BOOT_EVENT_URL", "").strip()
     spring_boot_sleep_setting_url: str = os.getenv("SPRING_BOOT_SLEEP_SETTING_URL", "").strip()

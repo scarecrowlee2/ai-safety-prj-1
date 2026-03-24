@@ -65,6 +65,8 @@ class Settings:
 
     inactive_seconds: float = float(os.getenv("INACTIVE_SECONDS", "30.0"))
     motion_threshold: float = float(os.getenv("MOTION_THRESHOLD", "0.002"))
+    # 운영 권장값: true (person gate가 준비되지 않으면 inactive detector가 degraded/error가 될 수 있음)
+    # 개발/테스트: optional dependency(ultralytics/YOLO 가중치) 부담을 줄이기 위해 false 가능
     enable_yolo_person_gate: bool = os.getenv("ENABLE_YOLO_PERSON_GATE", "false").lower() == "true"
     yolo_model: str = os.getenv("YOLO_MODEL", "yolov8n.pt")
 

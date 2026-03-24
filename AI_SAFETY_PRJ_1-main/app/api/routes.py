@@ -17,8 +17,12 @@ router = APIRouter(prefix="/api/v1", tags=["analyzer"])
 def health() -> dict:
     analyzer = VideoAnalyzer()
     diagnostics = analyzer.diagnostics()
+    inactive_mode = diagnostics.get("detectors", {}).get("inactive", {}).get("mode", "unknown")
+    service_status = "ok"
+    if inactive_mode in {"degraded", "error", "disabled"}:
+        service_status = "degraded"
     return {
-        "status": "ok",
+        "status": service_status,
         "app": settings.app_name,
         "env": settings.app_env,
         **diagnostics,

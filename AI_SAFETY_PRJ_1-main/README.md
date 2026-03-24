@@ -93,9 +93,22 @@ uvicorn app.main:app --reload
 - `.env` 주요 변수
   - `APP_TIMEZONE`, `DATA_DIR`, `MODELS_DIR`
   - `FALL_ENABLED`, `FALL_POSE_TASK_MODEL_PATH`
+  - `ENABLE_YOLO_PERSON_GATE` (운영에서 inactive 핵심 기능 사용 시 `true` 권장)
+  - `YOLO_MODEL` (예: `yolov8n.pt`)
   - `REALTIME_WEBCAM_SOURCE`, `REALTIME_WEBCAM_WIDTH`, `REALTIME_WEBCAM_HEIGHT`, `REALTIME_WEBCAM_FPS`
   - `REALTIME_EVENT_LOG_PATH`, `REALTIME_RECENT_EVENT_LIMIT`
   - `SPRING_BOOT_EVENT_URL` (외부 전송 연동 시)
+
+### Inactive detector 운영 정책
+
+- 운영 환경에서 inactive detector를 핵심 기능으로 사용할 경우 `ENABLE_YOLO_PERSON_GATE=true`를 권장합니다.
+- person gate가 비활성화(`false`)면 inactive detector는 제한(degraded) 모드로 동작합니다.
+- `ENABLE_YOLO_PERSON_GATE=true`인데 person gate(YOLO)가 준비되지 않으면 앱이 시작 단계에서 fail-fast 합니다.
+- 운영 점검 시 `GET /api/v1/health`의 `detectors.inactive`에서 아래를 확인하세요.
+  - `person_gate_enabled`
+  - `person_gate_backend`
+  - `person_gate_ready`
+  - `mode` (`full`/`degraded`/`disabled`/`error`)
 
 ---
 

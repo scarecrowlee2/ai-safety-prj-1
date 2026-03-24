@@ -37,14 +37,24 @@ def get_video_analyzer() -> VideoAnalyzer:
 def health() -> dict:
     analyzer = get_video_analyzer()
     diagnostics = analyzer.diagnostics()
-    inactive_mode = diagnostics.get("detectors", {}).get("inactive", {}).get("mode", "unknown")
+    detectors = diagnostics.get("detectors", {})
+    inactive_mode = detectors.get("inactive", {}).get("mode", "unknown")
     service_status = "ok"
     if inactive_mode in {"degraded", "error", "disabled"}:
         service_status = "degraded"
+    upload_supported_detectors = diagnostics.get("capabilities", {}).get("upload_supported_detectors", [])
+    upload_unsupported_detectors = diagnostics.get("capabilities", {}).get("upload_unsupported_detectors", [])
     return {
         "status": service_status,
         "app": settings.app_name,
         "env": settings.app_env,
+        "feature_scope": {
+            "upload_analyzer_supported_detectors": upload_supported_detectors,
+            "upload_analyzer_unsupported_detectors": upload_unsupported_detectors,
+            "notes": [
+                "realtime pipeline detector coverage may differ from upload analyzer coverage",
+            ],
+        },
         **diagnostics,
     }
 

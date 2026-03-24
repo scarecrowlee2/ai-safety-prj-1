@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -203,3 +204,45 @@ def test_realtime_overlay_latest_returns_fallback_when_not_ready(monkeypatch) ->
         "open_failed": True,
         "error": "camera offline",
     }
+
+
+class _FakeRequest:
+    def __init__(self) -> None:
+        self._checks = 0
+
+    async def is_disconnected(self) -> bool:
+        self._checks += 1
+        return self._checks > 1
+
+
+def test_realtime_overlay_stream_returns_sse_event(monkeypatch) -> None:
+    snapshot = _FakeAnalysisSnapshot(
+        frame_id=99,
+        timestamp_sec=4.2,
+        captured_at=datetime(2026, 3, 24, 12, 1, tzinfo=timezone.utc),
+        analyzed_at=datetime(2026, 3, 24, 12, 1, 1, tzinfo=timezone.utc),
+        source_size=(640, 360),
+        states={"fall": False},
+        objects=[{"label": "person"}],
+        banners=[],
+        ready=True,
+        box_coord_system="normalized_xyxy",
+        message="ok",
+        error=None,
+    )
+    service = _FakeCaptureService(
+        snapshot=None,
+        status=SimpleNamespace(open_failed=False, last_error=None),
+    )
+    monkeypatch.setattr(routes_realtime, "get_realtime_analysis_worker", lambda: _FakeAnalysisWorker(snapshot))
+    monkeypatch.setattr(routes_realtime, "get_realtime_capture_service", lambda: service)
+    request = _FakeRequest()
+
+    async def _read_first_event() -> str:
+        stream = routes_realtime._generate_overlay_event_stream(request)
+        return await stream.__anext__()
+
+    event = asyncio.run(_read_first_event())
+
+    assert event.startswith("event: overlay\n")
+    assert "data: " in event

@@ -14,6 +14,17 @@ class _DummyFrame:
     image: np.ndarray
 
 
+@dataclass
+class _FakeRealtimeResult:
+    frame: np.ndarray
+    metadata: dict[str, object]
+
+
+class _FakeRealtimePipeline:
+    def process_frame(self, image: np.ndarray, _timestamp_sec: float) -> _FakeRealtimeResult:
+        return _FakeRealtimeResult(frame=image, metadata={"new_logged_events": []})
+
+
 class _StreamingReader:
     def __init__(self, _config) -> None:
         self.fps = 30.0
@@ -53,6 +64,7 @@ def test_realtime_video_streams_mjpeg_frames(monkeypatch) -> None:
     from app.api import routes_realtime
 
     monkeypatch.setattr(routes_realtime, "WebcamReader", _StreamingReader)
+    monkeypatch.setattr(routes_realtime, "get_realtime_pipeline", lambda: _FakeRealtimePipeline())
     monkeypatch.setattr(routes_realtime, "_encode_jpeg", lambda _image: b"jpeg-bytes")
     client = TestClient(app)
 

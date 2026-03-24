@@ -92,7 +92,7 @@ def realtime_events(limit: int = RECENT_EVENT_LIMIT) -> dict[str, object]:
 
 
 def _generate_webcam_stream(pipeline: RealtimePipeline | None = None):
-    active_pipeline = pipeline or get_realtime_pipeline()
+    active_pipeline = pipeline if pipeline is not None else get_realtime_pipeline()
     reader = WebcamReader(_webcam_config_from_env())
 
     try:

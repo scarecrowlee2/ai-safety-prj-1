@@ -134,6 +134,13 @@ class InactiveDetector:
             detectShadows=True,
         )
 
+    # 이 메서드는 비디오 분석 세션 간 누적 상태를 초기화합니다.
+    def reset_runtime_state(self, *, reinitialize_background_subtractor: bool = True) -> None:
+        self.no_motion_seconds = 0.0
+        self._previous_timestamp = None
+        if reinitialize_background_subtractor:
+            self.background_subtractor = self.init_background_subtractor()
+
     # 이 메서드는 감지기의 현재 활성화 상태와 사유를 반환합니다.
     def status(self) -> dict[str, Any]:
         return {

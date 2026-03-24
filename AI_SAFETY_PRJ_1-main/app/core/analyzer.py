@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from threading import Lock
+from typing import Callable
 
 from app.core.config import settings
 from app.core.timeutils import resolve_timezone
@@ -26,6 +28,7 @@ class VideoAnalyzer:
         self.event_store = EventStore()
         self.metrics_logger = MetricsLogger()
         self._last_emitted_at: dict[EventType, float] = {}
+        self._analyze_lock = Lock()
 
     # 이 메서드는 현재 감지기 상태와 경고 정보를 진단용으로 반환합니다.
     def diagnostics(self) -> dict:
@@ -41,24 +44,32 @@ class VideoAnalyzer:
 
     # 이 함수는 영상을 분석해 감지 이벤트 목록과 부가 정보를 생성합니다.
     def analyze_video(self, resident_id: int, video_path: str | Path) -> AnalyzeVideoResponse:
-        reader = VideoReader(video_path=video_path, sample_fps=settings.sample_fps)
-        _metadata, frames = reader.read()
-        events: list[DetectionEvent] = []
+        with self._analyze_lock:
+            self.reset_runtime_state()
+            reader = VideoReader(video_path=video_path, sample_fps=settings.sample_fps)
+            _metadata, frames = reader.read()
+            events: list[DetectionEvent] = []
 
-        for frame in frames:
-            frame_events = self._process_frame(
+            for frame in frames:
+                frame_events = self._process_frame(
+                    resident_id=resident_id,
+                    frame_image=frame.image,
+                    timestamp_sec=frame.timestamp_sec,
+                )
+                events.extend(frame_events)
+
+            return AnalyzeVideoResponse(
                 resident_id=resident_id,
-                frame_image=frame.image,
-                timestamp_sec=frame.timestamp_sec,
+                video_name=Path(video_path).name,
+                events=events,
+                warnings=self._build_warnings(),
             )
-            events.extend(frame_events)
 
-        return AnalyzeVideoResponse(
-            resident_id=resident_id,
-            video_name=Path(video_path).name,
-            events=events,
-            warnings=self._build_warnings(),
-        )
+    # 이 메서드는 분석 요청 간 누적 상태를 초기화합니다.
+    def reset_runtime_state(self) -> None:
+        self._last_emitted_at.clear()
+        self.fall_detector.reset_runtime_state()
+        self.inactive_detector.reset_runtime_state()
 
     # 이 메서드는 현재 설정과 감지기 상태를 바탕으로 경고 메시지를 정리합니다.
     def _build_warnings(self) -> list[str]:
@@ -165,3 +176,18 @@ class VideoAnalyzer:
     # 이 메서드는 특정 이벤트가 발생한 시점을 기록합니다.
     def _mark_emitted(self, event_type: EventType, timestamp_sec: float) -> None:
         self._last_emitted_at[event_type] = timestamp_sec
+
+
+_analyzer_lock = Lock()
+_shared_analyzer: VideoAnalyzer | None = None
+_shared_analyzer_factory: Callable[[], VideoAnalyzer] | None = None
+
+
+def get_video_analyzer(factory: Callable[[], VideoAnalyzer] | None = None) -> VideoAnalyzer:
+    selected_factory = factory or VideoAnalyzer
+    global _shared_analyzer, _shared_analyzer_factory
+    with _analyzer_lock:
+        if _shared_analyzer is None or _shared_analyzer_factory is not selected_factory:
+            _shared_analyzer = selected_factory()
+            _shared_analyzer_factory = selected_factory
+        return _shared_analyzer

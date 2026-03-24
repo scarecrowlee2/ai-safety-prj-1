@@ -15,7 +15,7 @@ from time import sleep, time
 from typing import Any
 
 from app.core.realtime_capture import RealtimeCaptureService
-from app.core.realtime_pipeline import RealtimePipeline
+from app.core.realtime_pipeline import BOX_COORD_SYSTEM_NORMALIZED_XYXY, RealtimePipeline
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ class RealtimeAnalysisSnapshot:
     objects: list[dict[str, Any]]
     banners: list[dict[str, Any]]
     ready: bool
+    box_coord_system: str
     message: str
     error: str | None = None
 
@@ -70,6 +71,7 @@ class RealtimeAnalysisWorker:
             objects=[],
             banners=[],
             ready=False,
+            box_coord_system=BOX_COORD_SYSTEM_NORMALIZED_XYXY,
             message="Analysis worker not started.",
             error=None,
         )
@@ -96,6 +98,7 @@ class RealtimeAnalysisWorker:
                 objects=[],
                 banners=[],
                 ready=False,
+                box_coord_system=BOX_COORD_SYSTEM_NORMALIZED_XYXY,
                 message="Waiting for webcam frames.",
                 error=None,
             )
@@ -131,6 +134,7 @@ class RealtimeAnalysisWorker:
                 objects=[dict(item) for item in snapshot.objects],
                 banners=[dict(item) for item in snapshot.banners],
                 ready=snapshot.ready,
+                box_coord_system=snapshot.box_coord_system,
                 message=snapshot.message,
                 error=snapshot.error,
             )
@@ -158,6 +162,7 @@ class RealtimeAnalysisWorker:
                             objects=[],
                             banners=[],
                             ready=False,
+                            box_coord_system=BOX_COORD_SYSTEM_NORMALIZED_XYXY,
                             message=message,
                             error=error,
                         )
@@ -188,6 +193,7 @@ class RealtimeAnalysisWorker:
                             objects=[dict(item) for item in overlay_payload.get("objects", [])],
                             banners=[dict(item) for item in overlay_payload.get("banners", [])],
                             ready=True,
+                            box_coord_system=str(overlay_payload.get("box_coord_system", BOX_COORD_SYSTEM_NORMALIZED_XYXY)),
                             message="ok",
                             error=None,
                         )
@@ -206,6 +212,7 @@ class RealtimeAnalysisWorker:
                             objects=[],
                             banners=[],
                             ready=False,
+                            box_coord_system=BOX_COORD_SYSTEM_NORMALIZED_XYXY,
                             message="analysis failed",
                             error=str(exc),
                         )

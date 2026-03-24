@@ -23,6 +23,7 @@ class _FakeAnalysisSnapshot:
     objects: list[dict[str, object]]
     banners: list[dict[str, object]]
     ready: bool
+    box_coord_system: str
     message: str
     error: str | None = None
 
@@ -123,6 +124,7 @@ def test_realtime_overlay_latest_returns_ready_payload(monkeypatch) -> None:
         objects=[{"label": "person"}],
         banners=[{"level": "normal"}],
         ready=True,
+        box_coord_system="normalized_xyxy",
         message="ok",
         error=None,
     )
@@ -148,6 +150,7 @@ def test_realtime_overlay_latest_returns_ready_payload(monkeypatch) -> None:
     assert payload["analyzed_at"] == "2026-03-24T12:00:01+00:00"
     assert payload["source_size"] == {"width": 1280, "height": 720}
     assert payload["states"] == {"fall": False}
+    assert payload["box_coord_system"] == "normalized_xyxy"
     assert payload["objects"] == [{"label": "person"}]
     assert payload["banners"] == [{"level": "normal"}]
     assert payload["message"] == "ok"
@@ -166,6 +169,7 @@ def test_realtime_overlay_latest_returns_fallback_when_not_ready(monkeypatch) ->
         objects=[],
         banners=[],
         ready=False,
+        box_coord_system="normalized_xyxy",
         message="Waiting for webcam frames.",
         error="camera offline",
     )
@@ -192,6 +196,7 @@ def test_realtime_overlay_latest_returns_fallback_when_not_ready(monkeypatch) ->
         "analyzed_at": None,
         "source_size": None,
         "states": {},
+        "box_coord_system": "normalized_xyxy",
         "objects": [],
         "banners": [],
         "message": "Waiting for webcam frames.",

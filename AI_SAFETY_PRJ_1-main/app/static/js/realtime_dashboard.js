@@ -17,6 +17,7 @@ const eventTypeLabel = {
 
 const statusTypes = ['fall', 'inactive', 'violence'];
 const overlayPollMs = 400;
+const defaultBoxCoordSystem = 'normalized_xyxy';
 const overlayColor = {
   normal: '#22c55e',
   watch: '#f59e0b',
@@ -177,6 +178,15 @@ function levelToColor(level) {
   return overlayColor.normal;
 }
 
+
+function resolveOverlayCoordSystem(payload) {
+  const value = payload?.box_coord_system;
+  if (typeof value !== 'string' || !value.trim()) {
+    return defaultBoxCoordSystem;
+  }
+  return value;
+}
+
 function boxToPixels(box, coordSystem, sourceSize, canvasWidth, canvasHeight) {
   if (!box) return null;
 
@@ -208,7 +218,7 @@ function drawObjectBoxes(payload) {
   if (!overlayContext || !overlayCanvas) return;
 
   const objects = Array.isArray(payload?.objects) ? payload.objects : [];
-  const coordSystem = payload?.box_coord_system || 'normalized_xyxy';
+  const coordSystem = resolveOverlayCoordSystem(payload);
 
   objects.forEach((obj) => {
     const px = boxToPixels(obj?.box, coordSystem, payload?.source_size, overlayCanvas.width, overlayCanvas.height);

@@ -12,6 +12,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from app.core.realtime_capture import RealtimeCaptureService
+from app.core.realtime_pipeline import BOX_COORD_SYSTEM_NORMALIZED_XYXY
 from app.core.realtime_analysis_registry import get_realtime_analysis_worker
 from app.core.realtime_capture_registry import get_realtime_capture_service as get_global_realtime_capture_service
 from app.core.realtime_notifier_policy import RealtimeNotifierIntegration
@@ -131,6 +132,7 @@ def realtime_overlay_latest() -> dict[str, object]:
         "analyzed_at": _to_iso8601(snapshot.analyzed_at),
         "source_size": source_size,
         "states": snapshot.states,
+        "box_coord_system": getattr(snapshot, "box_coord_system", BOX_COORD_SYSTEM_NORMALIZED_XYXY),
         "objects": snapshot.objects,
         "banners": snapshot.banners,
         "message": snapshot.message,

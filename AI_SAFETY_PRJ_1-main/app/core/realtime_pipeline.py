@@ -14,6 +14,9 @@ from app.core.config import settings
 from app.storage.event_logger import EventLogger
 
 
+BOX_COORD_SYSTEM_NORMALIZED_XYXY = "normalized_xyxy"
+
+
 @dataclass(slots=True)
 class RealtimePipelineResult:
     """Processed frame plus structured metadata for realtime stream consumers."""
@@ -164,7 +167,7 @@ class RealtimePipeline:
         source_size = overlay_payload.get("source_size", {})
         source_width = max(1, int(source_size.get("width", overlay.shape[1])))
         source_height = max(1, int(source_size.get("height", overlay.shape[0])))
-        coord_system = overlay_payload.get("box_coord_system", "normalized_xyxy")
+        coord_system = overlay_payload.get("box_coord_system", BOX_COORD_SYSTEM_NORMALIZED_XYXY)
 
         text_x, y, line_height = self._draw_status_panel(overlay)
         for line in status_lines:
@@ -319,7 +322,7 @@ class RealtimePipeline:
             "frame_id": frame_id,
             "timestamp_sec": timestamp_sec,
             "source_size": {"width": frame_width, "height": frame_height},
-            "box_coord_system": "normalized_xyxy",
+            "box_coord_system": BOX_COORD_SYSTEM_NORMALIZED_XYXY,
             "states": states,
             "objects": objects,
             "banners": banners,
@@ -353,7 +356,7 @@ class RealtimePipeline:
         source_width: int,
         source_height: int,
     ) -> tuple[int, int, int, int]:
-        if coord_system == "normalized_xyxy":
+        if coord_system == BOX_COORD_SYSTEM_NORMALIZED_XYXY:
             return (
                 int(float(box.get("x1", 0.0)) * source_width),
                 int(float(box.get("y1", 0.0)) * source_height),

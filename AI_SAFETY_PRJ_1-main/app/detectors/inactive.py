@@ -20,6 +20,8 @@ class InactiveDecision:
     person_present: bool
     inactive_seconds: float = 0.0
     num_persons: int = 0
+    should_alert: bool = False
+    bbox: tuple[int, int, int, int] | None = None
 
 
 class InactiveDetector:
@@ -46,7 +48,13 @@ class InactiveDetector:
             return
 
         if settings.enable_yolo_person_gate and YOLO is not None:
-            self._yolo = YOLO(settings.yolo_model)
+            try:
+                self._yolo = YOLO(settings.yolo_model)
+            except Exception as exc:  # pragma: no cover - runtime/environment dependent
+                self._yolo = None
+                self.disabled_reason = (
+                    f"{self.disabled_reason}; yolo person gate disabled: {exc}" if self.disabled_reason else f"yolo person gate disabled: {exc}"
+                )
 
     # 이 메서드는 움직임 계산에 사용할 배경 차감기를 초기화합니다.
     def init_background_subtractor(self) -> Any:
@@ -67,19 +75,29 @@ class InactiveDetector:
         }
 
     # 이 메서드는 프레임 안에 사람이 있는지와 사람 수를 추정합니다.
-    def detect_person(self, frame: np.ndarray) -> tuple[bool, int]:
+    def detect_person(self, frame: np.ndarray) -> tuple[bool, int, tuple[int, int, int, int] | None]:
         if self._yolo is None:
-            return True, 1
+            return True, 1, None
 
         results = self._yolo.predict(frame, verbose=False)
         num_persons = 0
+        largest_bbox: tuple[int, int, int, int] | None = None
+        largest_area = -1
         for result in results:
             if not hasattr(result, "boxes") or result.boxes is None:
                 continue
-            for cls_id in result.boxes.cls.tolist():
+            xyxy = result.boxes.xyxy.tolist()
+            for idx, cls_id in enumerate(result.boxes.cls.tolist()):
                 if int(cls_id) == 0:
                     num_persons += 1
-        return num_persons > 0, num_persons
+                    if idx < len(xyxy):
+                        x1, y1, x2, y2 = (int(v) for v in xyxy[idx])
+                        w, h = max(x2 - x1, 0), max(y2 - y1, 0)
+                        area = w * h
+                        if area > largest_area:
+                            largest_area = area
+                            largest_bbox = (x1, y1, w, h)
+        return num_persons > 0, num_persons, largest_bbox
 
     # 이 메서드는 현재 프레임의 움직임 비율을 계산합니다.
     def calculate_motion(self, frame: np.ndarray) -> float:
@@ -122,15 +140,18 @@ class InactiveDetector:
         if not self.enabled:
             return InactiveDecision(motion_ratio=0.0, person_present=False, inactive_seconds=0.0, num_persons=0)
 
-        person_present, num_persons = self.detect_person(frame)
+        person_present, num_persons, bbox = self.detect_person(frame)
         motion_ratio = self.calculate_motion(frame)
         inactive_seconds = self.accumulate_no_motion(timestamp_sec, motion_ratio, person_present)
-        return InactiveDecision(
+        decision = InactiveDecision(
             motion_ratio=motion_ratio,
             person_present=person_present,
             inactive_seconds=inactive_seconds,
             num_persons=num_persons,
+            bbox=bbox,
         )
+        decision.should_alert = self.should_emit(decision)
+        return decision
 
     # 이 메서드는 감지 결과를 이벤트 메트릭 형태로 정리합니다.
     def build_metrics(self, decision: InactiveDecision) -> EventMetrics:

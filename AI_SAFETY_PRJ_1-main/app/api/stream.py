@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 import cv2
 
 from app.core.video import WebcamReader
-from app.detectors.adapters import run_fall_detector
+from app.detectors.adapters import run_fall_detector, run_inactive_detector
 from app.detectors.contracts import DetectorInput
 from app.detectors.fall import FallDecision, FallDetector
 from app.detectors.inactive import InactiveDetector
@@ -20,7 +20,7 @@ app = FastAPI(title="Realtime Safety Stream", version="1.1.0")
 class RealtimeSafetyPipeline:
     def __init__(self):
         self.fall_detector = FallDetector()
-        self.inactive_detector = InactiveDetector(inactive_seconds=20.0, motion_threshold=0.002)
+        self.inactive_detector = InactiveDetector()
         self.violence_detector = ViolenceDetector(
             motion_threshold=0.025,
             pair_distance_threshold=220.0,
@@ -41,10 +41,10 @@ class RealtimeSafetyPipeline:
         }
 
     # 이 메서드는 경고 상태가 새로 켜진 순간만 골라 로그 파일에 저장합니다.
-    def _log_new_alerts(self, fall: FallDecision, inactive, violence, fall_detected: bool, timestamp_sec: float):
+    def _log_new_alerts(self, fall: FallDecision, inactive, violence, fall_detected: bool, inactive_detected: bool, timestamp_sec: float):
         current = {
             "fall": bool(fall_detected),
-            "inactive": bool(inactive.should_alert),
+            "inactive": bool(inactive_detected),
             "violence": bool(violence.should_alert),
         }
 
@@ -86,11 +86,12 @@ class RealtimeSafetyPipeline:
 
         detector_input = DetectorInput(frame=frame, timestamp_sec=timestamp_sec)
         fall_result = run_fall_detector(self.fall_detector, detector_input)
+        inactive_result = run_inactive_detector(self.inactive_detector, detector_input)
         fall = fall_result.raw_decision
-        inactive = self.inactive_detector.evaluate(frame, timestamp_sec)
+        inactive = inactive_result.raw_decision
         violence = self.violence_detector.evaluate(frame, timestamp_sec)
 
-        self._log_new_alerts(fall, inactive, violence, fall_result.detected, timestamp_sec)
+        self._log_new_alerts(fall, inactive, violence, fall_result.detected, inactive_result.detected, timestamp_sec)
 
         y = self._draw_status_panel(overlay)
 
@@ -101,9 +102,9 @@ class RealtimeSafetyPipeline:
         self.overlay_colors["fall_alert"] if fall_result.detected else self.overlay_colors["fall_watch"] if fall.is_candidate else self.overlay_colors["safe"],
     ),
     (
-        f"Inactive: {'ALERT' if inactive.should_alert else ('WATCH' if inactive.person_present else 'NO PERSON')} | "
+        f"Inactive: {'ALERT' if inactive_result.detected else ('WATCH' if inactive.person_present else 'NO PERSON')} | "
         f"no_motion={inactive.inactive_seconds:.1f}s",
-        self.overlay_colors["inactive_alert"] if inactive.should_alert else self.overlay_colors["inactive_watch"] if inactive.person_present else self.overlay_colors["safe"],
+        self.overlay_colors["inactive_alert"] if inactive_result.detected else self.overlay_colors["inactive_watch"] if inactive.person_present else self.overlay_colors["safe"],
     ),
     (
         f"Violence: {'ALERT' if violence.should_alert else ('WATCH' if violence.num_persons >= 2 else 'NORMAL')} | "
@@ -148,7 +149,7 @@ class RealtimeSafetyPipeline:
         alerts = []
         if fall_result.detected:
             alerts.append(("FALL / FAINTING SUSPECTED", self.overlay_colors["fall_alert"]))
-        if inactive.should_alert:
+        if inactive_result.detected:
             alerts.append(("NO RESPONSE SUSPECTED", self.overlay_colors["inactive_alert"]))
         if violence.should_alert:
             alerts.append(("VIOLENCE SUSPECTED", self.overlay_colors["violence_alert"]))

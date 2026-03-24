@@ -1,54 +1,28 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import numpy as np
 from fastapi.testclient import TestClient
 
-from app.core.webcam_reader import WebcamOpenError
+from app.core.realtime_capture import RealtimeFrameSnapshot
 from app.main import app
 
 
 @dataclass
-class _DummyFrame:
-    image: np.ndarray
+class _FakeCaptureService:
+    snapshot: RealtimeFrameSnapshot | None
+    status: object
+    latest_frame_calls: int = 0
 
+    def get_latest_frame(self) -> RealtimeFrameSnapshot | None:
+        self.latest_frame_calls += 1
+        return self.snapshot
 
-@dataclass
-class _FakeRealtimeResult:
-    frame: np.ndarray
-    metadata: dict[str, object]
-
-
-class _FakeRealtimePipeline:
-    def process_frame(self, image: np.ndarray, _timestamp_sec: float) -> _FakeRealtimeResult:
-        return _FakeRealtimeResult(frame=image, metadata={"new_logged_events": []})
-
-
-class _StreamingReader:
-    def __init__(self, _config) -> None:
-        self.fps = 30.0
-        self.closed = False
-
-    def open(self) -> None:
-        return None
-
-    def frames(self):
-        yield _DummyFrame(image=np.zeros((12, 12, 3), dtype=np.uint8))
-
-    def close(self) -> None:
-        self.closed = True
-
-
-class _UnavailableReader:
-    def __init__(self, _config) -> None:
-        self.fps = 30.0
-
-    def open(self) -> None:
-        raise WebcamOpenError("camera offline")
-
-    def close(self) -> None:
-        return None
+    def get_status(self) -> object:
+        return self.status
 
 
 def test_realtime_dashboard_points_to_inner_video_route() -> None:
@@ -60,11 +34,22 @@ def test_realtime_dashboard_points_to_inner_video_route() -> None:
     assert 'src="/realtime/video"' in response.text
 
 
-def test_realtime_video_streams_mjpeg_frames(monkeypatch) -> None:
+def test_realtime_video_streams_latest_capture_frame(monkeypatch) -> None:
     from app.api import routes_realtime
 
-    monkeypatch.setattr(routes_realtime, "WebcamReader", _StreamingReader)
-    monkeypatch.setattr(routes_realtime, "get_realtime_pipeline", lambda: _FakeRealtimePipeline())
+    snapshot = RealtimeFrameSnapshot(
+        frame_id=10,
+        timestamp_sec=2.5,
+        captured_at=datetime.now(timezone.utc),
+        source_size=(16, 12),
+        image=np.zeros((12, 16, 3), dtype=np.uint8),
+    )
+    service = _FakeCaptureService(
+        snapshot=snapshot,
+        status=SimpleNamespace(open_failed=False, last_error=None),
+    )
+
+    monkeypatch.setattr(routes_realtime, "get_realtime_capture_service", lambda: service)
     monkeypatch.setattr(routes_realtime, "_encode_jpeg", lambda _image: b"jpeg-bytes")
     client = TestClient(app)
 
@@ -75,13 +60,25 @@ def test_realtime_video_streams_mjpeg_frames(monkeypatch) -> None:
     assert response.headers["content-type"].startswith("multipart/x-mixed-replace")
     assert b"--frame" in first_chunk
     assert b"Content-Type: image/jpeg" in first_chunk
+    assert b"jpeg-bytes" in first_chunk
+    assert service.latest_frame_calls >= 1
 
 
-def test_realtime_video_returns_fallback_frame_when_camera_is_unavailable(monkeypatch) -> None:
+def test_realtime_video_returns_fallback_frame_when_snapshot_missing(monkeypatch) -> None:
     from app.api import routes_realtime
 
-    monkeypatch.setattr(routes_realtime, "WebcamReader", _UnavailableReader)
-    monkeypatch.setattr(routes_realtime, "_build_status_frame", lambda _message: b"fallback-jpeg")
+    captured_messages: list[str] = []
+    service = _FakeCaptureService(
+        snapshot=None,
+        status=SimpleNamespace(open_failed=True, last_error="camera offline"),
+    )
+
+    monkeypatch.setattr(routes_realtime, "get_realtime_capture_service", lambda: service)
+    monkeypatch.setattr(
+        routes_realtime,
+        "_build_status_frame",
+        lambda message: captured_messages.append(message) or b"fallback-jpeg",
+    )
     client = TestClient(app)
 
     with client.stream("GET", "/realtime/video") as response:
@@ -91,3 +88,6 @@ def test_realtime_video_returns_fallback_frame_when_camera_is_unavailable(monkey
     assert response.headers["content-type"].startswith("multipart/x-mixed-replace")
     assert b"--frame" in first_chunk
     assert b"Content-Type: image/jpeg" in first_chunk
+    assert b"fallback-jpeg" in first_chunk
+    assert captured_messages
+    assert "웹캠을 열 수 없습니다" in captured_messages[0]

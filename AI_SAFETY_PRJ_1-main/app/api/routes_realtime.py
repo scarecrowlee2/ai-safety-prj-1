@@ -12,6 +12,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from app.core.realtime_capture import RealtimeCaptureService
+from app.core.realtime_analysis_registry import get_realtime_analysis_worker
 from app.core.realtime_capture_registry import get_realtime_capture_service as get_global_realtime_capture_service
 from app.core.realtime_notifier_policy import RealtimeNotifierIntegration
 from app.core.config import settings
@@ -66,6 +67,7 @@ def realtime_dashboard() -> HTMLResponse:
         js_path="/static/js/realtime_dashboard.js",
         video_path="/realtime/video",
         events_path="/api/v1/realtime/events",
+        overlay_path="/api/v1/realtime/overlay/latest",
     )
     return HTMLResponse(html)
 
@@ -106,6 +108,37 @@ def realtime_status() -> dict[str, object]:
     }
 
 
+@api_router.get("/overlay/latest", response_class=JSONResponse)
+def realtime_overlay_latest() -> dict[str, object]:
+    """Return the latest realtime overlay snapshot for frontend polling."""
+
+    snapshot = get_realtime_analysis_worker().get_latest_snapshot()
+    capture_status = get_realtime_capture_service().get_status()
+    source_size = (
+        {
+            "width": snapshot.source_size[0],
+            "height": snapshot.source_size[1],
+        }
+        if snapshot.source_size is not None
+        else None
+    )
+
+    return {
+        "ready": snapshot.ready,
+        "frame_id": snapshot.frame_id,
+        "timestamp_sec": snapshot.timestamp_sec,
+        "captured_at": _to_iso8601(snapshot.captured_at),
+        "analyzed_at": _to_iso8601(snapshot.analyzed_at),
+        "source_size": source_size,
+        "states": snapshot.states,
+        "objects": snapshot.objects,
+        "banners": snapshot.banners,
+        "message": snapshot.message,
+        "open_failed": capture_status.open_failed,
+        "error": snapshot.error,
+    }
+
+
 def _summarize_realtime_status(events: list[dict[str, object]]) -> dict[str, str]:
     now = datetime.now(timezone.utc)
     status_by_type = {event_type: "normal" for event_type in STATUS_EVENT_TYPES}
@@ -142,6 +175,12 @@ def _parse_logged_at(value: object) -> datetime | None:
         return parsed.astimezone(timezone.utc)
 
     return None
+
+
+def _to_iso8601(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return value.isoformat()
 
 
 def _generate_webcam_stream():

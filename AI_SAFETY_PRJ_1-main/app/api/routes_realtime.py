@@ -20,7 +20,6 @@ from app.storage.event_logger import EventLogger
 from app.storage.realtime_event_store import RealtimeEventStore
 from app.notifier import EventNotifier
 from app.storage.event_store import EventStore
-from app.core.webcam_reader import WebcamConfig, WebcamOpenError, WebcamReader
 
 router = APIRouter(tags=["realtime"])
 api_router = APIRouter(prefix="/api/v1/realtime", tags=["realtime"])
@@ -152,32 +151,42 @@ def _parse_logged_at(value: object) -> datetime | None:
     return None
 
 
-def _generate_webcam_stream(pipeline: RealtimePipeline | None = None):
-    active_pipeline = pipeline if pipeline is not None else get_realtime_pipeline()
-    reader = WebcamReader(_webcam_config_from_env())
+def _generate_webcam_stream():
+    """Stream only raw frames from the global capture service.
 
-    try:
-        reader.open()
-    except (WebcamOpenError, ImportError, OSError, RuntimeError) as exc:
-        message = f"웹캠을 열 수 없습니다: {exc}"
-        yield _mjpeg_chunk(_build_status_frame(message))
-        return
+    Analysis is intentionally removed from this path to separate capture/streaming
+    concerns from AI processing in phase 1.
+    """
 
-    frame_delay = 1.0 / max(reader.fps, 1.0)
+    capture_service = get_realtime_capture_service()
+    frame_delay = 1.0 / max(settings.realtime_webcam_fps, 1.0)
+    last_frame_id: int | None = None
+    last_encoded_frame: bytes | None = None
 
-    try:
-        stream_started_at = 0.0
-        for frame_index, webcam_frame in enumerate(reader.frames()):
-            timestamp_sec = getattr(webcam_frame, "timestamp_sec", stream_started_at + (frame_index * frame_delay))
-            result = active_pipeline.process_frame(webcam_frame.image, float(timestamp_sec))
-            new_logged_events = result.metadata.get("new_logged_events")
-            if isinstance(new_logged_events, list):
-                realtime_notifier.notify_logged_events(new_logged_events)
-            yield _mjpeg_chunk(_encode_jpeg(result.frame))
+    while True:
+        status = capture_service.get_status()
+        snapshot = capture_service.get_latest_frame()
+
+        if snapshot is None:
+            message = "웹캠 프레임을 준비 중입니다."
+            if status.open_failed:
+                detail = status.last_error or "unknown error"
+                message = f"웹캠을 열 수 없습니다: {detail}"
+            yield _mjpeg_chunk(_build_status_frame(message))
             sleep(frame_delay)
-    finally:
-        with suppress(Exception):
-            reader.close()
+            continue
+
+        if snapshot.frame_id != last_frame_id:
+            last_frame_id = snapshot.frame_id
+            last_encoded_frame = _encode_jpeg(snapshot.image)
+
+        if last_encoded_frame is None:
+            yield _mjpeg_chunk(_build_status_frame("웹캠 프레임 인코딩에 실패했습니다."))
+            sleep(frame_delay)
+            continue
+
+        yield _mjpeg_chunk(last_encoded_frame)
+        sleep(frame_delay)
 
 
 def _mjpeg_chunk(frame_bytes: bytes) -> bytes:
@@ -228,19 +237,6 @@ def _wrap_text(value: str, max_chars: int) -> list[str]:
     if current:
         lines.append(" ".join(current))
     return lines
-
-
-def _webcam_config_from_env() -> WebcamConfig:
-    raw_source = settings.realtime_webcam_source
-    source: int | str = int(raw_source) if raw_source.isdigit() else raw_source
-
-    return WebcamConfig(
-        source=source,
-        width=settings.realtime_webcam_width,
-        height=settings.realtime_webcam_height,
-        fps=settings.realtime_webcam_fps,
-        backend=settings.realtime_webcam_backend,
-    )
 
 
 def _pil_image_to_jpeg_bytes(image: Image.Image) -> bytes:

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from collections import deque
-from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -89,46 +88,4 @@ class RealtimeEventFeed:
     def _coerce_float(value: Any) -> float | None:
         if isinstance(value, (int, float)):
             return float(value)
-        return None
-
-
-class EventLogger:
-    """Backward-compatible logger wrapper used by realtime processing."""
-
-    def __init__(self, log_path: str | Path | None = None) -> None:
-        self.feed = RealtimeEventFeed(log_path)
-
-    def log(self, event_type: str, payload: Any, message: str, timestamp_sec: float | None = None) -> dict[str, Any]:
-        metadata = self._serialize_payload(payload)
-        confidence = self._extract_confidence(metadata)
-
-        return self.feed.record_event(
-            event_type=event_type,
-            label=message,
-            timestamp_sec=timestamp_sec,
-            confidence=confidence,
-            metadata=metadata,
-        )
-
-    def list_recent(self, limit: int) -> list[dict[str, Any]]:
-        return self.feed.list_recent(limit)
-
-    @staticmethod
-    def _serialize_payload(payload: Any) -> dict[str, Any]:
-        if payload is None:
-            return {}
-        if is_dataclass(payload):
-            return asdict(payload)
-        if isinstance(payload, dict):
-            return payload
-        if hasattr(payload, "__dict__"):
-            return dict(payload.__dict__)
-        return {"value": str(payload)}
-
-    @staticmethod
-    def _extract_confidence(payload: dict[str, Any]) -> float | None:
-        for key in ("confidence", "score", "probability"):
-            value = payload.get(key)
-            if isinstance(value, (int, float)):
-                return float(value)
         return None

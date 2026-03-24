@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw
 from app.core.realtime_pipeline import RealtimePipeline
 from app.core.config import settings
 from app.storage.event_logger import EventLogger
+from app.storage.realtime_event_store import RealtimeEventStore
 from app.core.webcam_reader import WebcamConfig, WebcamOpenError, WebcamReader
 
 router = APIRouter(tags=["realtime"])
@@ -29,13 +30,14 @@ DEFAULT_CAMERA_HEIGHT = settings.realtime_webcam_height
 
 
 realtime_event_logger = EventLogger(str(REALTIME_EVENT_LOG_PATH))
+realtime_event_store = RealtimeEventStore(feed=realtime_event_logger.store.feed)
 realtime_pipeline = RealtimePipeline(event_logger=realtime_event_logger)
 
 
 def _load_recent_events(limit: int = RECENT_EVENT_LIMIT) -> list[dict[str, object]]:
-    """Read recent realtime events from the inner JSONL-backed event feed."""
+    """Read recent realtime dashboard events from the event-store feed path."""
 
-    return realtime_event_logger.list_recent(limit=limit)
+    return realtime_event_store.list_recent_feed(limit=limit)
 
 
 @router.get("/realtime", response_class=HTMLResponse)

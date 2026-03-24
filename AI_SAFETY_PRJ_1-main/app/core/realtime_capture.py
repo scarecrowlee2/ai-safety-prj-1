@@ -110,6 +110,7 @@ class RealtimeCaptureService:
                 return
 
             self._stop_event.clear()
+            self._latest_frame = None
             self._open_failed = False
             self._last_error = None
             self._started_at = datetime.now(timezone.utc)

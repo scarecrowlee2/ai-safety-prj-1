@@ -5,9 +5,11 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import numpy as np
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from app.core.realtime_capture import RealtimeFrameSnapshot
-from app.main import app
+from app.api import routes_realtime
 
 
 @dataclass
@@ -25,6 +27,8 @@ class _FakeCaptureService:
 
 
 def test_realtime_dashboard_points_to_inner_video_route() -> None:
+    app = FastAPI()
+    app.include_router(routes_realtime.router)
     client = TestClient(app)
 
     response = client.get("/realtime")
@@ -34,8 +38,6 @@ def test_realtime_dashboard_points_to_inner_video_route() -> None:
 
 
 def test_realtime_video_streams_latest_capture_frame(monkeypatch) -> None:
-    from app.api import routes_realtime
-
     snapshot = RealtimeFrameSnapshot(
         frame_id=10,
         timestamp_sec=2.5,
@@ -62,8 +64,6 @@ def test_realtime_video_streams_latest_capture_frame(monkeypatch) -> None:
 
 
 def test_realtime_video_returns_fallback_frame_when_snapshot_missing(monkeypatch) -> None:
-    from app.api import routes_realtime
-
     captured_messages: list[str] = []
     service = _FakeCaptureService(
         snapshot=None,
@@ -76,7 +76,6 @@ def test_realtime_video_returns_fallback_frame_when_snapshot_missing(monkeypatch
         "_build_status_frame",
         lambda message: captured_messages.append(message) or b"fallback-jpeg",
     )
-    client = TestClient(app)
 
     stream = routes_realtime._generate_webcam_stream()
     first_chunk = next(stream)

@@ -7,11 +7,14 @@ file reader in :mod:`app.core.video`.
 """
 
 from dataclasses import dataclass
+import logging
 import os
 from typing import TYPE_CHECKING, Iterator
 
 if TYPE_CHECKING:
     import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 class WebcamOpenError(RuntimeError):
@@ -151,14 +154,50 @@ class WebcamReader:
         cv2 = self._cv2()
 
         if self.config.width is not None:
-            capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.width)
+            self._try_set_capture_property(
+                capture,
+                cv2.CAP_PROP_FRAME_WIDTH,
+                float(self.config.width),
+                property_name="width",
+            )
         if self.config.height is not None:
-            capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.height)
+            self._try_set_capture_property(
+                capture,
+                cv2.CAP_PROP_FRAME_HEIGHT,
+                float(self.config.height),
+                property_name="height",
+            )
         if self.config.fps is not None and self.config.fps > 0:
-            capture.set(cv2.CAP_PROP_FPS, self.config.fps)
+            self._try_set_capture_property(
+                capture,
+                cv2.CAP_PROP_FPS,
+                float(self.config.fps),
+                property_name="fps",
+            )
 
         if self.config.fps is not None and self.config.fps > 0:
             self._fps = float(self.config.fps)
+
+    @staticmethod
+    def _try_set_capture_property(capture, property_id: int, value: float, *, property_name: str) -> None:
+        cv2 = WebcamReader._cv2()
+        try:
+            applied = bool(capture.set(property_id, value))
+        except cv2.error as exc:
+            logger.warning(
+                "Webcam capture property '%s' could not be applied (value=%s): %s",
+                property_name,
+                value,
+                exc,
+            )
+            return
+
+        if not applied:
+            logger.warning(
+                "Webcam capture property '%s' was rejected by backend (value=%s); using device default.",
+                property_name,
+                value,
+            )
 
 
 __all__ = [

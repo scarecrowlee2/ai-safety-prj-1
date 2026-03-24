@@ -149,11 +149,16 @@ def test_realtime_overlay_latest_returns_ready_payload(monkeypatch) -> None:
     assert payload["timestamp_sec"] == 3.25
     assert payload["captured_at"] == "2026-03-24T12:00:00+00:00"
     assert payload["analyzed_at"] == "2026-03-24T12:00:01+00:00"
+    assert isinstance(payload["server_now"], str)
     assert payload["source_size"] == {"width": 1280, "height": 720}
     assert payload["states"] == {"fall": False}
     assert payload["box_coord_system"] == "normalized_xyxy"
     assert payload["objects"] == [{"label": "person"}]
     assert payload["banners"] == [{"level": "normal"}]
+    assert payload["analysis_seq"] is None
+    assert isinstance(payload["overlay_age_ms"], int)
+    assert payload["overlay_stale_threshold_ms"] >= 0
+    assert isinstance(payload["is_stale"], bool)
     assert payload["message"] == "ok"
     assert payload["open_failed"] is False
     assert payload["error"] is None
@@ -189,21 +194,24 @@ def test_realtime_overlay_latest_returns_fallback_when_not_ready(monkeypatch) ->
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload == {
-        "ready": False,
-        "frame_id": None,
-        "timestamp_sec": None,
-        "captured_at": None,
-        "analyzed_at": None,
-        "source_size": None,
-        "states": {},
-        "box_coord_system": "normalized_xyxy",
-        "objects": [],
-        "banners": [],
-        "message": "Waiting for webcam frames.",
-        "open_failed": True,
-        "error": "camera offline",
-    }
+    assert payload["ready"] is False
+    assert payload["frame_id"] is None
+    assert payload["timestamp_sec"] is None
+    assert payload["captured_at"] is None
+    assert payload["analyzed_at"] is None
+    assert isinstance(payload["server_now"], str)
+    assert payload["source_size"] is None
+    assert payload["states"] == {}
+    assert payload["box_coord_system"] == "normalized_xyxy"
+    assert payload["objects"] == []
+    assert payload["banners"] == []
+    assert payload["analysis_seq"] is None
+    assert payload["overlay_age_ms"] is None
+    assert payload["overlay_stale_threshold_ms"] >= 0
+    assert payload["is_stale"] is False
+    assert payload["message"] == "Waiting for webcam frames."
+    assert payload["open_failed"] is True
+    assert payload["error"] == "camera offline"
 
 
 class _FakeRequest:

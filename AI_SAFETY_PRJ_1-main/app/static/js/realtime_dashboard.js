@@ -22,6 +22,8 @@ const eventTypeLabel = {
 const statusTypes = ['fall', 'inactive', 'violence'];
 const overlayPollMs = 400;
 const overlaySseFallbackDelayMs = 4000;
+const defaultOverlayStaleThresholdMs = 3000;
+const overlayStaleCheckMs = 500;
 const defaultBoxCoordSystem = 'normalized_xyxy';
 const overlayColor = {
   normal: '#22c55e',
@@ -326,9 +328,38 @@ function renderOverlay(payload) {
 let overlayConnectionMode = 'polling';
 let overlayLastReceivedAt = 0;
 let overlayLastRenderedFrameId = null;
+let overlayLastPayload = null;
 let overlayPollTimerId = null;
 let overlayFallbackTimerId = null;
 let overlayEventSource = null;
+let overlayStaleTimerId = null;
+
+function resolveOverlayStaleThreshold(payload) {
+  const threshold = Number(payload?.overlay_stale_threshold_ms);
+  if (Number.isFinite(threshold) && threshold >= 0) {
+    return threshold;
+  }
+  return defaultOverlayStaleThresholdMs;
+}
+
+function applyOverlayStaleState(isStale) {
+  if (!page) return;
+  page.dataset.overlayStale = isStale ? 'true' : 'false';
+}
+
+function refreshOverlayStaleState() {
+  if (!overlayLastPayload) {
+    applyOverlayStaleState(false);
+    return;
+  }
+  if (!overlayLastPayload.ready) {
+    applyOverlayStaleState(false);
+    return;
+  }
+  const thresholdMs = resolveOverlayStaleThreshold(overlayLastPayload);
+  const elapsedMs = Date.now() - overlayLastReceivedAt;
+  applyOverlayStaleState(elapsedMs > thresholdMs);
+}
 
 function consumeOverlayPayload(payload) {
   if (!payload || typeof payload !== 'object') return;
@@ -342,7 +373,9 @@ function consumeOverlayPayload(payload) {
 
   overlayLastReceivedAt = Date.now();
   overlayLastRenderedFrameId = nextFrameId;
+  overlayLastPayload = payload;
   renderOverlay(payload);
+  refreshOverlayStaleState();
 }
 
 function stopOverlayPolling() {
@@ -418,6 +451,11 @@ function startOverlaySse() {
   overlayEventSource.onerror = () => {
     fallbackToOverlayPolling();
   };
+}
+
+function startOverlayStaleWatcher() {
+  if (overlayStaleTimerId !== null) return;
+  overlayStaleTimerId = window.setInterval(refreshOverlayStaleState, overlayStaleCheckMs);
 }
 
 async function loadRecentEvents() {
@@ -509,10 +547,15 @@ loadRecentEvents();
 loadStatusSummary();
 loadOverlaySnapshot();
 startOverlaySse();
+startOverlayStaleWatcher();
 window.setInterval(loadRecentEvents, 10000);
 window.setInterval(loadStatusSummary, 10000);
 
 window.addEventListener('beforeunload', () => {
   stopOverlaySse();
   stopOverlayPolling();
+  if (overlayStaleTimerId !== null) {
+    window.clearInterval(overlayStaleTimerId);
+    overlayStaleTimerId = null;
+  }
 });

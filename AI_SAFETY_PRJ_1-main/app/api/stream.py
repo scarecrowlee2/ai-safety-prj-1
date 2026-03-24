@@ -76,9 +76,33 @@ class RealtimeSafetyPipeline:
 
     # 이 메서드는 상태 패널 배경을 그리고 상단 정보 표시에 사용할 y 좌표를 반환합니다.
     def _draw_status_panel(self, overlay):
-        cv2.rectangle(overlay, (10, 10), (980, 170), self.overlay_colors["panel"], -1)
-        cv2.rectangle(overlay, (10, 10), (980, 170), (90, 90, 90), 2)
-        return 40
+        frame_height, frame_width = overlay.shape[:2]
+
+        panel_margin_x = 10
+        panel_top_y = 10
+        panel_height = 160
+        panel_padding_x = 15
+        panel_top_padding = 30
+        line_height = 32
+
+        panel_x1 = max(0, panel_margin_x)
+        panel_x2 = frame_width - panel_margin_x - 1
+        if panel_x2 <= panel_x1:
+            panel_x1 = 0
+            panel_x2 = max(0, frame_width - 1)
+
+        panel_y1 = max(0, panel_top_y)
+        panel_y2 = min(frame_height - 1, panel_y1 + panel_height)
+        if panel_y2 <= panel_y1:
+            panel_y1 = 0
+            panel_y2 = max(0, frame_height - 1)
+
+        cv2.rectangle(overlay, (panel_x1, panel_y1), (panel_x2, panel_y2), self.overlay_colors["panel"], -1)
+        cv2.rectangle(overlay, (panel_x1, panel_y1), (panel_x2, panel_y2), (90, 90, 90), 2)
+
+        text_x = max(0, min(panel_x2 - 4, panel_x1 + panel_padding_x))
+        text_y = max(0, min(panel_y2 - 4, panel_y1 + panel_top_padding))
+        return text_x, text_y, line_height
 
     # 이 메서드는 각 감지기 결과를 더 선명한 색상 박스와 텍스트로 화면에 표시합니다.
     def process(self, frame, timestamp_sec: float):
@@ -93,7 +117,7 @@ class RealtimeSafetyPipeline:
 
         self._log_new_alerts(fall, inactive, violence, fall_result.detected, inactive_result.detected, timestamp_sec)
 
-        y = self._draw_status_panel(overlay)
+        text_x, y, line_height = self._draw_status_panel(overlay)
 
         lines = [
     (
@@ -114,8 +138,8 @@ class RealtimeSafetyPipeline:
 ]
 
         for line, color in lines:
-            cv2.putText(overlay, line, (25, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-            y += 32
+            cv2.putText(overlay, line, (text_x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+            y += line_height
 
         if inactive.bbox is not None:
             x, y1, w, h = inactive.bbox

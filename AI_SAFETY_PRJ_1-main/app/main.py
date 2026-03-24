@@ -11,6 +11,7 @@ from app.api.routes_realtime import api_router as realtime_api_router
 from app.api.routes_realtime import router as realtime_router
 from app.core.analyzer import get_video_analyzer
 from app.core.config import settings
+from app.core.realtime_capture_registry import get_realtime_capture_service
 
 
 def _run_startup_initialization() -> None:
@@ -24,7 +25,12 @@ def _run_startup_initialization() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     _run_startup_initialization()
-    yield
+    capture_service = get_realtime_capture_service()
+    capture_service.start()
+    try:
+        yield
+    finally:
+        capture_service.stop()
 
 
 app = FastAPI(title=settings.app_name, version="0.2.0", lifespan=lifespan)

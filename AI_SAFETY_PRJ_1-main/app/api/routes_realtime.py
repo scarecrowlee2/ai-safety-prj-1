@@ -12,6 +12,8 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from app.core.realtime_pipeline import RealtimePipeline
+from app.core.realtime_capture import RealtimeCaptureService
+from app.core.realtime_capture_registry import get_realtime_capture_service as get_global_realtime_capture_service
 from app.core.realtime_notifier_policy import RealtimeNotifierIntegration
 from app.core.config import settings
 from app.storage.event_logger import EventLogger
@@ -43,6 +45,12 @@ realtime_notifier = RealtimeNotifierIntegration(notifier=EventNotifier(EventStor
 
 def get_realtime_pipeline() -> RealtimePipeline:
     return realtime_pipeline
+
+
+def get_realtime_capture_service() -> RealtimeCaptureService:
+    """Return the app-wide realtime capture service singleton."""
+
+    return get_global_realtime_capture_service()
 
 
 def _load_recent_events(limit: int = RECENT_EVENT_LIMIT) -> list[dict[str, object]]:

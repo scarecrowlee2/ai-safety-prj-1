@@ -40,6 +40,7 @@ class Settings:
     realtime_webcam_width: int = int(os.getenv("REALTIME_WEBCAM_WIDTH", "960"))
     realtime_webcam_height: int = int(os.getenv("REALTIME_WEBCAM_HEIGHT", "540"))
     realtime_webcam_fps: float = float(os.getenv("REALTIME_WEBCAM_FPS", "15.0"))
+    realtime_analysis_fps: float = float(os.getenv("REALTIME_ANALYSIS_FPS", "5.0"))
     realtime_webcam_backend: int | None = (
         int(os.getenv("REALTIME_WEBCAM_BACKEND", "").strip())
         if os.getenv("REALTIME_WEBCAM_BACKEND", "").strip()

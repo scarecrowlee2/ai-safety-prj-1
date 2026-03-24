@@ -11,6 +11,7 @@ from app.api.routes_realtime import api_router as realtime_api_router
 from app.api.routes_realtime import router as realtime_router
 from app.core.analyzer import get_video_analyzer
 from app.core.config import settings
+from app.core.realtime_analysis_registry import get_realtime_analysis_worker
 from app.core.realtime_capture_registry import get_realtime_capture_service
 
 
@@ -26,10 +27,13 @@ def _run_startup_initialization() -> None:
 async def lifespan(_: FastAPI):
     _run_startup_initialization()
     capture_service = get_realtime_capture_service()
+    analysis_worker = get_realtime_analysis_worker()
     capture_service.start()
+    analysis_worker.start()
     try:
         yield
     finally:
+        analysis_worker.stop()
         capture_service.stop()
 
 

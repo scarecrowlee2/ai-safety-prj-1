@@ -4,12 +4,8 @@ const refreshLabel = document.querySelector('#event-refresh-label');
 const eventsEndpoint = page?.dataset.eventsEndpoint;
 const statusEndpoint = buildStatusEndpoint(eventsEndpoint);
 const diagnosticsEndpoint = page?.dataset.diagnosticsEndpoint || null;
-const overlayEndpoint =
-  page?.dataset.overlayEndpoint || document.querySelector('.video-frame')?.dataset.overlayEndpoint || null;
-const overlayStreamEndpoint =
-  page?.dataset.overlayStreamEndpoint ||
-  document.querySelector('.video-frame')?.dataset.overlayStreamEndpoint ||
-  null;
+const overlayEndpoint = page?.dataset.overlayEndpoint || '/api/v1/realtime/overlay/latest';
+const overlayStreamEndpoint = page?.dataset.overlayStreamEndpoint || '/api/v1/realtime/overlay/stream';
 const videoImage = document.querySelector('#realtime-video');
 const overlayCanvas = document.querySelector('#realtime-overlay');
 const overlayContext = overlayCanvas?.getContext('2d') || null;
@@ -356,7 +352,9 @@ let overlayStaleTimerId = null;
 function renderOverlayConnectionMode(mode) {
   const modeEl = document.querySelector('#diag-overlay-mode');
   if (!modeEl) return;
-  modeEl.textContent = mode === 'sse' ? 'sse' : 'polling';
+  const modeText = mode === 'sse' ? 'sse' : 'polling';
+  const stale = page?.dataset.overlayStale === 'true';
+  modeEl.textContent = stale ? `${modeText} (stale)` : modeText;
 }
 
 function setOverlayConnectionMode(mode) {
@@ -375,6 +373,7 @@ function resolveOverlayStaleThreshold(payload) {
 function applyOverlayStaleState(isStale) {
   if (!page) return;
   page.dataset.overlayStale = isStale ? 'true' : 'false';
+  renderOverlayConnectionMode(overlayConnectionMode);
 }
 
 function refreshOverlayStaleState() {

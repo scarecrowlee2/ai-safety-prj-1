@@ -17,8 +17,9 @@
       class="monitor-page"
       data-events-endpoint="$events_path?limit=$recent_event_count"
       data-overlay-endpoint="$overlay_path"
-      data-overlay-stream-endpoint="/api/v1/realtime/overlay/stream"
+      data-overlay-stream-endpoint="$overlay_stream_path"
       data-diagnostics-endpoint="$diagnostics_path"
+      data-overlay-stale="false"
     >
       <header class="hero-card panel">
         <div>
@@ -54,9 +55,11 @@
           </div>
           <div
             class="video-frame"
-            data-overlay-endpoint="$overlay_path"
-            data-overlay-stream-endpoint="/api/v1/realtime/overlay/stream"
+            aria-live="polite"
           >
+            <div class="overlay-stale-banner" id="overlay-stale-banner" role="status">
+              OVERLAY STALE
+            </div>
             <div class="video-layer-stack">
               <img id="realtime-video" src="$video_path" alt="실시간 AI 안전 모니터링 영상" />
               <canvas id="realtime-overlay" aria-hidden="true"></canvas>

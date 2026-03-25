@@ -55,7 +55,13 @@ class Settings:
     realtime_notify_enabled: bool = os.getenv("REALTIME_NOTIFY_ENABLED", "false").lower() == "true"
     # Outbound notifier MVP default: fall/inactive only (violence stays internal realtime signal).
     realtime_notify_event_types: str = os.getenv("REALTIME_NOTIFY_EVENT_TYPES", "fall,inactive")
-    realtime_notify_resident_id: int = int(os.getenv("REALTIME_NOTIFY_RESIDENT_ID", "1"))
+    # 현재 realtime outbound는 단일 resident 고정 매핑 기반입니다.
+    realtime_notify_resident_id: int | None = (
+        int(os.getenv("REALTIME_NOTIFY_RESIDENT_ID", "").strip())
+        if os.getenv("REALTIME_NOTIFY_RESIDENT_ID", "").strip()
+        else None
+    )
+    realtime_snapshot_dir: Path = Path(os.getenv("REALTIME_SNAPSHOT_DIR", "./data/snapshots/realtime")).expanduser()
 
     fall_enabled: bool = os.getenv("FALL_ENABLED", "true").lower() == "true"
     fall_pose_task_model_path: Path = Path(
@@ -89,6 +95,7 @@ class Settings:
         self.outbox_jsonl.parent.mkdir(parents=True, exist_ok=True)
         self.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
         self.realtime_event_log_path.parent.mkdir(parents=True, exist_ok=True)
+        self.realtime_snapshot_dir.mkdir(parents=True, exist_ok=True)
 
 
 settings = Settings()

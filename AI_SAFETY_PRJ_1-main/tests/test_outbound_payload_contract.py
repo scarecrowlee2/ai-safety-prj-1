@@ -48,13 +48,13 @@ def test_realtime_logged_event_mapping_uses_same_outbound_rules(monkeypatch) -> 
 
     policy = RealtimeNotifierPolicy()
 
-    fall_event = policy.to_detection_event({"event_type": "fall", "label": "fall alert"})
-    inactive_event = policy.to_detection_event({"event_type": "inactive", "label": "inactive alert"})
-    violence_event = policy.to_detection_event({"event_type": "violence", "label": "violence alert"})
+    fall_event = policy.to_detection_event({"event_type": "fall", "label": "fall alert"}, snapshot_path="/tmp/fall.jpg")
+    inactive_event = policy.to_detection_event({"event_type": "inactive", "label": "inactive alert"}, snapshot_path="/tmp/inactive.jpg")
+    violence_event = policy.to_detection_event({"event_type": "violence", "label": "violence alert"}, snapshot_path="/tmp/violence.jpg")
 
     assert fall_event is not None
     assert inactive_event is not None
     assert violence_event is None
     assert fall_event.status == EventStatus.PENDING
     assert inactive_event.status == EventStatus.PENDING
-    assert fall_event.snapshot_path == "realtime://stream"
+    assert fall_event.snapshot_path == "/tmp/fall.jpg"

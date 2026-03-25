@@ -45,7 +45,10 @@ class _FakePipeline:
                 "states": {"fall_alert": False, "violence_watch": True},
                 "objects": [{"label": f"obj-{frame_id}"}],
                 "banners": [{"text": f"banner-{frame_id}", "level": "watch"}],
-            }
+            },
+            "metadata": {
+                "new_logged_events": [{"event_type": "fall", "label": "fall"}],
+            },
         }
 
 
@@ -121,5 +124,37 @@ def test_worker_survives_missing_frame_and_open_failed_state() -> None:
         assert failed.error == "camera offline"
         assert failed.analysis_seq >= 1
         assert pipeline.analyzed_frame_ids == []
+    finally:
+        worker.stop()
+
+
+def test_worker_survives_outbound_dispatcher_failure() -> None:
+    capture = _FakeCaptureService()
+    pipeline = _FakePipeline()
+
+    def _boom(**_kwargs):  # noqa: ANN001
+        raise RuntimeError("outbound failed")
+
+    worker = RealtimeAnalysisWorker(
+        capture_service=capture,
+        pipeline=pipeline,
+        outbound_dispatcher=_boom,
+        target_fps=120.0,
+        idle_sleep_sec=0.01,
+    )
+
+    frame = RealtimeFrameSnapshot(
+        frame_id=1,
+        timestamp_sec=1.0,
+        captured_at=datetime.now(timezone.utc),
+        source_size=(8, 6),
+        image=np.zeros((6, 8, 3), dtype=np.uint8),
+    )
+
+    worker.start()
+    try:
+        capture.set_snapshot(frame)
+        assert _wait_until(lambda: worker.get_latest_snapshot().ready is True)
+        assert worker.get_latest_snapshot().message == "ok"
     finally:
         worker.stop()

@@ -17,12 +17,10 @@ from app.core.realtime_capture import RealtimeCaptureService
 from app.core.realtime_pipeline import BOX_COORD_SYSTEM_NORMALIZED_XYXY
 from app.core.realtime_analysis_registry import get_realtime_analysis_worker
 from app.core.realtime_capture_registry import get_realtime_capture_service as get_global_realtime_capture_service
-from app.core.realtime_notifier_policy import RealtimeNotifierIntegration
+from app.core.realtime_outbound import realtime_notifier
 from app.core.config import settings
 from app.storage.event_logger import EventLogger
 from app.storage.realtime_event_store import RealtimeEventStore
-from app.notifier import EventNotifier
-from app.storage.event_store import EventStore
 
 router = APIRouter(tags=["realtime"])
 api_router = APIRouter(prefix="/api/v1/realtime", tags=["realtime"])
@@ -46,7 +44,6 @@ OVERLAY_TRANSPORT_RECOMMENDED_MODE = "sse"
 
 realtime_event_logger = EventLogger(str(REALTIME_EVENT_LOG_PATH))
 realtime_event_store = RealtimeEventStore(feed=realtime_event_logger.store.feed)
-realtime_notifier = RealtimeNotifierIntegration(notifier=EventNotifier(EventStore()))
 
 def get_realtime_capture_service() -> RealtimeCaptureService:
     """Return the app-wide realtime capture service singleton."""
@@ -156,6 +153,7 @@ def realtime_diagnostics() -> dict[str, object]:
         "overlay": {
             "transport_recommended_mode": OVERLAY_TRANSPORT_RECOMMENDED_MODE,
         },
+        "outbound": realtime_notifier.diagnostics(),
         "server_now": now.isoformat(),
     }
 

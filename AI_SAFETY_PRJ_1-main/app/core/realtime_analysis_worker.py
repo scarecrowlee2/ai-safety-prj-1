@@ -12,9 +12,9 @@ from datetime import datetime, timezone
 import logging
 from threading import Event, Lock, Thread
 from time import sleep, time
-from typing import Any
+from typing import Any, Callable
 
-from app.core.realtime_capture import RealtimeCaptureService
+from app.core.realtime_capture import RealtimeCaptureService, RealtimeFrameSnapshot
 from app.core.realtime_pipeline import BOX_COORD_SYSTEM_NORMALIZED_XYXY, RealtimePipeline
 
 logger = logging.getLogger(__name__)
@@ -50,12 +50,14 @@ class RealtimeAnalysisWorker:
         target_fps: float = 5.0,
         idle_sleep_sec: float = 0.05,
         thread_name: str = "realtime-analysis-worker",
+        outbound_dispatcher: Callable[..., list[dict[str, Any]]] | None = None,
     ) -> None:
         self._capture_service = capture_service
         self._pipeline = pipeline or RealtimePipeline()
         self._loop_sleep_sec = 1.0 / max(target_fps, 0.5)
         self._idle_sleep_sec = max(0.01, idle_sleep_sec)
         self._thread_name = thread_name
+        self._outbound_dispatcher = outbound_dispatcher
 
         self._lock = Lock()
         self._stop_event = Event()
@@ -188,6 +190,7 @@ class RealtimeAnalysisWorker:
                         frame_id=frame_snapshot.frame_id,
                     )
                     overlay_payload = result.get("overlay_payload", {})
+                    outbound_results = self._dispatch_outbound(result=result, frame_snapshot=frame_snapshot)
                     self._set_snapshot(
                         RealtimeAnalysisSnapshot(
                             frame_id=frame_snapshot.frame_id,
@@ -204,6 +207,8 @@ class RealtimeAnalysisWorker:
                             error=None,
                         )
                     )
+                    if outbound_results:
+                        logger.debug("Realtime outbound notifications processed", extra={"count": len(outbound_results)})
                     self._last_analyzed_frame_id = frame_snapshot.frame_id
                 except Exception as exc:  # noqa: BLE001
                     logger.exception("Realtime analysis worker failed to analyze frame.")
@@ -228,6 +233,19 @@ class RealtimeAnalysisWorker:
         finally:
             with self._lock:
                 self._running = False
+
+    def _dispatch_outbound(self, *, result: dict[str, Any], frame_snapshot: RealtimeFrameSnapshot) -> list[dict[str, Any]]:
+        if self._outbound_dispatcher is None:
+            return []
+        metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+        new_logged_events = metadata.get("new_logged_events")
+        if not isinstance(new_logged_events, list) or not new_logged_events:
+            return []
+        try:
+            return self._outbound_dispatcher(logged_events=new_logged_events, frame=frame_snapshot.image)
+        except Exception:  # noqa: BLE001
+            logger.exception("Realtime outbound dispatcher failed; continuing analysis loop.")
+            return []
 
     def _set_snapshot(self, snapshot: RealtimeAnalysisSnapshot) -> None:
         with self._lock:

@@ -26,6 +26,7 @@ class Settings:
     keep_temp_upload_files: bool = os.getenv("KEEP_TEMP_UPLOAD_FILES", "false").lower() == "true"
 
     spring_boot_event_url: str = os.getenv("SPRING_BOOT_EVENT_URL", "").strip()
+    spring_boot_delivery_enabled: bool = os.getenv("SPRING_BOOT_DELIVERY_ENABLED", "true").lower() == "true"
     spring_boot_sleep_setting_url: str = os.getenv("SPRING_BOOT_SLEEP_SETTING_URL", "").strip()
     http_timeout_seconds: float = float(os.getenv("HTTP_TIMEOUT_SECONDS", "5.0"))
     retry_max_attempts: int = int(os.getenv("RETRY_MAX_ATTEMPTS", "3"))

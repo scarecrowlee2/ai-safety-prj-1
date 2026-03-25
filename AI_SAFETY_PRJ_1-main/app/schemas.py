@@ -47,10 +47,18 @@ class AnalyzeVideoResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class NotificationDisposition(str, Enum):
+    DELIVERED = "delivered"
+    QUEUED = "queued"
+    FAILED_QUEUED = "failed_queued"
+    SKIPPED = "skipped"
+
+
 class NotificationResult(BaseModel):
     success: bool
     attempts: int = 1
     detail: str = ""
+    disposition: NotificationDisposition = NotificationDisposition.DELIVERED
 
 
 class CaptureRecord(BaseModel):

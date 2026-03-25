@@ -78,7 +78,7 @@ async def analyze_video(
         result = analyzer.analyze_video(resident_id=resident_id, video_path=upload_path)
         if notify:
             notifier = EventNotifier(EventStore())
-            notification_results = [notifier.send_event(event).model_dump() for event in result.events]
+            notification_results = [notifier.send_event(event).model_dump(mode="json") for event in result.events]
             payload = result.model_dump(mode="json")
             payload["notification_results"] = notification_results
             return payload

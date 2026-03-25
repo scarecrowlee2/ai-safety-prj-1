@@ -94,6 +94,7 @@ class RealtimeNotifierIntegration:
                         "success": False,
                         "attempts": 1,
                         "detail": str(exc),
+                        "disposition": "failed_queued",
                     }
                 )
                 continue
@@ -104,6 +105,7 @@ class RealtimeNotifierIntegration:
                     "success": result.success,
                     "attempts": result.attempts,
                     "detail": result.detail,
+                    "disposition": result.disposition.value,
                 }
             )
         return results

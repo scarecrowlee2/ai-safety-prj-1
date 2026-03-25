@@ -52,7 +52,8 @@ class Settings:
     realtime_violence_pair_distance_threshold: float = float(os.getenv("REALTIME_VIOLENCE_PAIR_DISTANCE_THRESHOLD", "220.0"))
     realtime_violence_hold_seconds: float = float(os.getenv("REALTIME_VIOLENCE_HOLD_SECONDS", "2.0"))
     realtime_notify_enabled: bool = os.getenv("REALTIME_NOTIFY_ENABLED", "false").lower() == "true"
-    realtime_notify_event_types: str = os.getenv("REALTIME_NOTIFY_EVENT_TYPES", "fall,inactive,violence")
+    # Outbound notifier MVP default: fall/inactive only (violence stays internal realtime signal).
+    realtime_notify_event_types: str = os.getenv("REALTIME_NOTIFY_EVENT_TYPES", "fall,inactive")
     realtime_notify_resident_id: int = int(os.getenv("REALTIME_NOTIFY_RESIDENT_ID", "1"))
 
     fall_enabled: bool = os.getenv("FALL_ENABLED", "true").lower() == "true"

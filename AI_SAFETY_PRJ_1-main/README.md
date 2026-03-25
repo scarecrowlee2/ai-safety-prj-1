@@ -36,6 +36,8 @@ pip install -r requirements-optional.txt
 - Realtime 상태 요약 API: `GET /api/v1/realtime/status`
 - 업로드 분석 API: `POST /api/v1/analyze/video`
 - Outbox 재전송: `POST /api/v1/retry-outbox`
+- Dev Mock Receiver (개발/테스트 전용): `POST/GET/DELETE /api/v1/dev/mock-receiver/events`
+- Dev Mock Diagnostics (개발/테스트 전용): `GET /api/v1/dev/mock-receiver/diagnostics`
 
 ## 3) 기능 범위 구분 (업로드 vs 실시간)
 
@@ -102,3 +104,42 @@ pip install -r requirements-optional.txt
 - outbox는 공식 이벤트 저장소(SQLite)를 대체하지 않으며, **전달 보조 수단**입니다.
 - outbox 레코드에는 `payload`, `queued_at`, `reason`, `source`, `last_error`가 저장됩니다.
 - 재전송은 API `POST /api/v1/retry-outbox` 또는 notifier의 retry 경로로 수행할 수 있으며, 성공 항목은 outbox에서 제거되고 실패 항목은 유지됩니다.
+
+## 10) 개발/로컬 연동 검증용 Mock Receiver (MVP 4차)
+
+- `Spring Boot`를 수정할 수 없는 개발 단계에서 Python notifier outbound payload를 end-to-end로 검증하기 위한 **개발/테스트 전용 수신기**입니다.
+- 목적은 실제 운영 기능 대체가 아니라, Python 전송 경로(업로드 분석 / realtime / outbox retry) 검증입니다.
+- 노출 제어:
+  - `DEV_MOCK_RECEIVER_ENABLED=true`일 때만 라우트 포함됩니다.
+  - 운영 환경(`APP_ENV=prod`)에서는 `DEV_MOCK_RECEIVER_ENABLED=false`를 권장합니다.
+- 주요 경로:
+  - `POST /api/v1/dev/mock-receiver/events`: outbound payload 수신/기록
+  - `GET /api/v1/dev/mock-receiver/events`: 최근 수신 payload 조회
+  - `DELETE /api/v1/dev/mock-receiver/events`: 기록 초기화
+  - `GET /api/v1/dev/mock-receiver/diagnostics`: mock 수신 건수 + notifier 마지막 시도 + outbox 건수
+
+### 로컬 E2E 검증 절차(권장)
+
+1. 서버 실행
+   - `uvicorn app.main:app --reload`
+2. `.env` 설정
+   - `SPRING_BOOT_EVENT_URL=http://127.0.0.1:8000/api/v1/dev/mock-receiver/events`
+   - `SPRING_BOOT_DELIVERY_ENABLED=true`
+   - realtime 검증 시 `REALTIME_NOTIFY_ENABLED=true`, `REALTIME_NOTIFY_EVENT_TYPES=fall,inactive`, `REALTIME_NOTIFY_RESIDENT_ID=<id>`
+3. 업로드 분석 전송 검증
+   - `POST /api/v1/analyze/video` + `notify=true` 호출
+   - `GET /api/v1/dev/mock-receiver/events`에서 payload 수신 확인
+4. realtime 전송 검증
+   - realtime 이벤트(FALL/INACTIVE) 발생 후 mock receiver 수신 확인
+   - MVP 기준 `VIOLENCE`는 외부 outbound로 전송되지 않음
+5. 실패/재시도 검증
+   - `SPRING_BOOT_EVENT_URL`을 일시적으로 잘못 설정하거나 수신 불가 상태를 만들고 이벤트 전송
+   - `GET /api/v1/dev/mock-receiver/diagnostics`에서 outbox 적재 건수 확인
+   - URL 복구 후 `POST /api/v1/retry-outbox` 실행
+   - `GET /api/v1/dev/mock-receiver/events`에서 재수신 확인
+
+### realtime outbound 현재 전제/한계
+
+- outbound 대상 이벤트: `FALL`, `INACTIVE` (MVP 기준)
+- `resident_id`는 현재 `REALTIME_NOTIFY_RESIDENT_ID` 단일 고정 매핑
+- `snapshot_path`는 realtime snapshot 저장 성공 시 실제 파일 경로, 실패 시 `realtime://stream` fallback

@@ -14,6 +14,10 @@ from app.storage.outbox_store import OutboxRecord, OutboxStore
 
 
 class EventNotifier:
+    _last_attempt_at: str | None = None
+    _last_success: bool | None = None
+    _last_error: str | None = None
+
     # 이 메서드는 클래스가 동작하는 데 필요한 초기 상태와 객체를 준비합니다.
     def __init__(self, event_store: EventStore | None = None, outbox_store: OutboxStore | None = None) -> None:
         self.event_store = event_store or EventStore()
@@ -141,11 +145,16 @@ class EventNotifier:
 
     def _post_payload(self, payload: dict[str, object]) -> tuple[bool, str]:
         try:
+            EventNotifier._last_attempt_at = datetime.now().isoformat()
             with httpx.Client(timeout=settings.http_timeout_seconds) as client:
                 response = client.post(settings.spring_boot_event_url, json=payload)
                 response.raise_for_status()
+            EventNotifier._last_success = True
+            EventNotifier._last_error = None
             return True, ""
         except Exception as exc:  # pragma: no cover - network dependent
+            EventNotifier._last_success = False
+            EventNotifier._last_error = str(exc)
             return False, str(exc)
 
     def _queue_payload(
@@ -156,3 +165,13 @@ class EventNotifier:
         last_error: str | None = None,
     ) -> OutboxRecord:
         return self.outbox_store.enqueue(payload, reason=reason, last_error=last_error)
+
+    def diagnostics(self) -> dict[str, object]:
+        return {
+            "delivery_enabled": self._is_delivery_enabled(),
+            "event_url": settings.spring_boot_event_url,
+            "last_attempt_at": EventNotifier._last_attempt_at,
+            "last_success": EventNotifier._last_success,
+            "last_error": EventNotifier._last_error,
+            "outbox_pending_count": self.outbox_store.count(),
+        }

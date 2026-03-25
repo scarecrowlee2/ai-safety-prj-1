@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
+from app.api.routes_dev_mock import router as dev_mock_router
 from app.api.routes_realtime import api_router as realtime_api_router
 from app.api.routes_realtime import router as realtime_router
 from app.core.analyzer import get_video_analyzer
@@ -42,6 +43,8 @@ app.mount("/static", StaticFiles(directory=str(Path(__file__).resolve().parent /
 app.include_router(router)
 app.include_router(realtime_router)
 app.include_router(realtime_api_router)
+if settings.dev_mock_receiver_enabled:
+    app.include_router(dev_mock_router)
 
 
 # 이 함수는 루트 경로에서 기본 서비스 정보를 반환합니다.

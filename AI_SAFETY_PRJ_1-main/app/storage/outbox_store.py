@@ -78,3 +78,6 @@ class OutboxStore:
 
         text = "\n".join(json.dumps(record.model_dump(mode="json"), ensure_ascii=False) for record in records) + "\n"
         self.path.write_text(text, encoding="utf-8")
+
+    def count(self) -> int:
+        return len(self.read_records())

@@ -93,3 +93,10 @@ pip install -r requirements-optional.txt
 - `VIOLENCE`는 실시간 UI/로그/분석 등 **내부 파이프라인에는 유지**될 수 있지만 외부 전송 대상은 아닙니다.
 - outbound payload의 `status` 기본값은 항상 `PENDING`으로 고정되며, `CONFIRMED`/`CLOSED` 전이는 Spring Boot 책임입니다.
 - 실시간 경로에서 전송되는 `snapshot_path`는 현재 `realtime://stream` 임시값이며, 후속 작업에서 실제 스냅샷 파일 경로로 대체 예정입니다.
+
+## 9) Notifier / Outbox 동작 (MVP 2차)
+
+- Python(FastAPI) 감지 서버는 outbound payload를 Spring Boot로 전송하고, 전송 불가/실패 시 outbox(JSONL)에 큐잉합니다.
+- outbox는 공식 이벤트 저장소(SQLite)를 대체하지 않으며, **전달 보조 수단**입니다.
+- outbox 레코드에는 `payload`, `queued_at`, `reason`, `source`, `last_error`가 저장됩니다.
+- 재전송은 API `POST /api/v1/retry-outbox` 또는 notifier의 retry 경로로 수행할 수 있으며, 성공 항목은 outbox에서 제거되고 실패 항목은 유지됩니다.

@@ -8,6 +8,7 @@ from typing import Iterable
 
 from app.core.config import settings
 from app.schemas import CaptureRecord, DetectionEvent, EventMetrics, EventStatus, EventType
+from app.storage.outbox_store import OutboxStore
 
 
 class EventStore:
@@ -93,11 +94,10 @@ class EventStore:
             ).fetchall()
         return [self._row_to_event(row) for row in rows]
 
-    # 이 메서드는 전송 실패 payload를 outbox 파일에 적재합니다.
+    # 이 메서드는 하위 호환을 위해 outbox 적재를 위임합니다.
+    # 신규 구현은 OutboxStore를 직접 사용하세요.
     def append_outbox(self, payload: dict) -> None:
-        settings.outbox_jsonl.parent.mkdir(parents=True, exist_ok=True)
-        with settings.outbox_jsonl.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        OutboxStore().enqueue(payload, reason="delivery_failed")
 
     # 이 메서드는 데이터베이스 조회 결과 한 행을 DetectionEvent 객체로 변환합니다.
     def _row_to_event(self, row: sqlite3.Row) -> DetectionEvent:

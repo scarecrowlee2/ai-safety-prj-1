@@ -6,6 +6,7 @@ from typing import Any
 from app.core.config import settings
 from app.core.timeutils import resolve_timezone
 from app.notifier import EventNotifier
+from app.outbound_payload import is_outbound_event_type_allowed
 from app.schemas import DetectionEvent, EventMetrics, EventType
 
 
@@ -32,7 +33,9 @@ class RealtimeNotifierPolicy:
         normalized = event_type.strip().lower()
         if not normalized:
             return False
-        return normalized in self.allowed_event_types
+        if normalized not in self.allowed_event_types:
+            return False
+        return is_outbound_event_type_allowed(normalized)
 
     def to_detection_event(self, logged_event: dict[str, Any]) -> DetectionEvent | None:
         event_type_value = str(logged_event.get("event_type", "")).strip().lower()
@@ -59,6 +62,7 @@ class RealtimeNotifierPolicy:
             resident_id=self.resident_id,
             event_type=mapped_type,
             detected_at=datetime.now(self.tz),
+            # TODO(phase2): replace virtual stream URI with persisted snapshot file path.
             snapshot_path="realtime://stream",
             description=description,
             metrics=metrics,

@@ -8,6 +8,7 @@ import httpx
 
 from app.core.config import settings
 from app.core.timeutils import resolve_timezone
+from app.outbound_payload import build_outbound_payload
 from app.schemas import DetectionEvent, NotificationResult
 from app.storage.event_store import EventStore
 
@@ -20,10 +21,13 @@ class EventNotifier:
 
     # 이 메서드는 감지 이벤트를 외부 서버로 전송하고 결과를 반환합니다.
     def send_event(self, event: DetectionEvent) -> NotificationResult:
-        payload = event.model_dump(mode="json")
-        payload["sent_at"] = datetime.now(self.tz).isoformat()
-        if self.timezone_warning:
-            payload["timezone_warning"] = self.timezone_warning
+        payload = build_outbound_payload(
+            event,
+            sent_at=datetime.now(self.tz),
+            timezone_warning=self.timezone_warning,
+        )
+        if payload is None:
+            return NotificationResult(success=True, attempts=0, detail="outbound 대상 이벤트 아님 - 전송 생략")
 
         if not settings.spring_boot_event_url:
             self.event_store.append_outbox(payload)

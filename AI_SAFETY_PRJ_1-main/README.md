@@ -84,3 +84,12 @@ pip install -r requirements-optional.txt
 
 - 웹캠 미연결/오류 환경에서는 `/realtime/video`가 실영상 대신 fallback 상태 프레임을 반환할 수 있습니다.
 - 레거시 실행 경로(`uvicorn app.api.stream:app`)는 현재 공식 경로가 아닙니다.
+
+
+## 8) Python 감지 서버의 외부 연동(MVP 1차)
+
+- 이 프로젝트는 **감지 서버(Python/FastAPI)** 역할을 담당하며, 외부 업무 상태 관리는 Spring Boot가 담당합니다.
+- 외부 전송(outbound) 이벤트는 MVP 기준으로 `FALL`, `INACTIVE`만 허용됩니다.
+- `VIOLENCE`는 실시간 UI/로그/분석 등 **내부 파이프라인에는 유지**될 수 있지만 외부 전송 대상은 아닙니다.
+- outbound payload의 `status` 기본값은 항상 `PENDING`으로 고정되며, `CONFIRMED`/`CLOSED` 전이는 Spring Boot 책임입니다.
+- 실시간 경로에서 전송되는 `snapshot_path`는 현재 `realtime://stream` 임시값이며, 후속 작업에서 실제 스냅샷 파일 경로로 대체 예정입니다.

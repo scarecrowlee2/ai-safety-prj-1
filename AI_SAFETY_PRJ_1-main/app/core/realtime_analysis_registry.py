@@ -6,6 +6,7 @@ from threading import Lock
 
 from app.core.config import settings
 from app.core.realtime_analysis_worker import RealtimeAnalysisWorker
+from app.core.realtime_outbound import dispatch_realtime_logged_events
 from app.core.realtime_capture_registry import get_realtime_capture_service
 
 _registry_lock = Lock()
@@ -21,6 +22,7 @@ def get_realtime_analysis_worker() -> RealtimeAnalysisWorker:
             _analysis_worker = RealtimeAnalysisWorker(
                 capture_service=get_realtime_capture_service(),
                 target_fps=settings.realtime_analysis_fps,
+                outbound_dispatcher=dispatch_realtime_logged_events,
             )
         return _analysis_worker
 

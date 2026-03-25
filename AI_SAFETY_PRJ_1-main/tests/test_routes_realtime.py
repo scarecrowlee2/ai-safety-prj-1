@@ -251,6 +251,7 @@ def test_realtime_diagnostics_returns_capture_analysis_overlay_state(monkeypatch
         "get_realtime_analysis_worker",
         lambda: SimpleNamespace(is_running=True, get_latest_snapshot=lambda: snapshot),
     )
+    monkeypatch.setattr(routes_realtime.realtime_notifier, "diagnostics", lambda: {"enabled": True, "last_success": True})
 
     response = client.get("/api/v1/realtime/diagnostics")
 
@@ -265,6 +266,7 @@ def test_realtime_diagnostics_returns_capture_analysis_overlay_state(monkeypatch
     assert payload["analysis"]["latest_frame"]["frame_id"] == 55
     assert payload["analysis"]["latest_frame"]["analyzed_at"] == "2026-03-24T12:02:01+00:00"
     assert payload["overlay"]["transport_recommended_mode"] == "sse"
+    assert payload["outbound"] == {"enabled": True, "last_success": True}
     assert isinstance(payload["server_now"], str)
 
 

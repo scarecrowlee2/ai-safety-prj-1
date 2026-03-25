@@ -92,7 +92,9 @@ pip install -r requirements-optional.txt
 - 외부 전송(outbound) 이벤트는 MVP 기준으로 `FALL`, `INACTIVE`만 허용됩니다.
 - `VIOLENCE`는 실시간 UI/로그/분석 등 **내부 파이프라인에는 유지**될 수 있지만 외부 전송 대상은 아닙니다.
 - outbound payload의 `status` 기본값은 항상 `PENDING`으로 고정되며, `CONFIRMED`/`CLOSED` 전이는 Spring Boot 책임입니다.
-- 실시간 경로에서 전송되는 `snapshot_path`는 현재 `realtime://stream` 임시값이며, 후속 작업에서 실제 스냅샷 파일 경로로 대체 예정입니다.
+- 실시간 경로에서도 outbound notifier 경로를 통해 전송 가능하며, 대상 이벤트는 MVP 기준 `FALL`, `INACTIVE`입니다.
+- realtime outbound 이벤트는 발생 순간 프레임을 `REALTIME_SNAPSHOT_DIR`에 저장하고 해당 실제 파일 경로를 `snapshot_path`로 사용합니다(저장 실패 시 `realtime://stream` fallback).
+- realtime outbound의 `resident_id`는 현재 단일 설정값(`REALTIME_NOTIFY_RESIDENT_ID`) 고정 매핑 방식입니다.
 
 ## 9) Notifier / Outbox 동작 (MVP 2차)
 

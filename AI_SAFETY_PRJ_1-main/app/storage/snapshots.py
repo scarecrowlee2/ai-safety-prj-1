@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import numpy as np
 
@@ -11,8 +12,8 @@ from app.schemas import CaptureRecord, EventType
 
 class SnapshotStorage:
     # 이 메서드는 클래스가 동작하는 데 필요한 초기 상태와 객체를 준비합니다.
-    def __init__(self) -> None:
-        self.base_dir = settings.snapshot_dir
+    def __init__(self, base_dir: Path | None = None) -> None:
+        self.base_dir = base_dir or settings.snapshot_dir
         self.tz, self.timezone_warning = resolve_timezone(settings.app_timezone)
 
     # 이 메서드는 스냅샷 이미지를 저장하고 저장 기록을 반환합니다.
